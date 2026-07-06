@@ -44,8 +44,12 @@ export interface Goal {
 }
 
 export interface SocialSecurity {
-  monthly_benefit_today: number
+  monthly_benefit_today?: number
   claiming_age: number
+  // PIA mode (YAML/CLI): derive the benefit from your full-retirement-age
+  // amount, applying SSA claiming-age factors.
+  pia_monthly?: number
+  full_retirement_age?: number
 }
 
 export interface SeriesParams {

@@ -48,6 +48,11 @@ goal:
 social_security:                    # optional; delete this block to disable
   monthly_benefit_today: 2900
   claiming_age: 67
+  # Or estimate the benefit from your PIA (the amount at full retirement age):
+  # the sim applies SSA early-reduction / delayed-credit factors for the
+  # claiming age. E.g. PIA $3,000 claimed at 70 with FRA 67 -> $3,720/mo.
+  # pia_monthly: 3000
+  # full_retirement_age: 67           # default 67 (born 1960+)
 
 # Optional: override any default market assumption (see retirement_sim/defaults.yaml)
 # market:

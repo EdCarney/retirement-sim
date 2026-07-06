@@ -62,7 +62,10 @@ def format_summary(results: SimulationResults) -> str:
         add(f"Goal: reach {money(goal.amount)} ({goal.basis} dollars) by age {person.retirement_age}")
     if config.social_security is not None:
         ss = config.social_security
-        add(f"Social Security: {money(ss.monthly_benefit_today)}/month (today's $) from age {ss.claiming_age}")
+        ss_line = f"Social Security: {money(ss.monthly_benefit_today)}/month (today's $) from age {ss.claiming_age}"
+        if ss.pia_monthly is not None:
+            ss_line += f" (from PIA {money(ss.pia_monthly)} at FRA {ss.full_retirement_age:g})"
+        add(ss_line)
     starting = sum(a.balance for a in config.accounts)
     add(f"Starting balance: {money(starting)} across {len(config.accounts)} account(s)")
     seed_note = f", seed {results.seed}" if results.seed is not None else ""
