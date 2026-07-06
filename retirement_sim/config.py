@@ -422,17 +422,48 @@ def _check_unique_names(accounts: tuple[Account, ...]) -> None:
         seen.add(account.name)
 
 
+# Fidelity assumes salaries grow at inflation + 1.5%; salary-mode
+# contributions inherit that 1.5% real increase unless overridden.
+_DEFAULT_SALARY_REAL_GROWTH = 0.015
+
+
+def _resolve_amount(raw: dict, context: str) -> tuple[float, bool]:
+    """Return ``(annual_amount, salary_mode)`` from a phase mapping.
+
+    Either give an explicit ``annual_amount``, or express it as a
+    ``savings_rate`` (fraction) of a ``salary`` -- e.g. 15% of $120k.
+    """
+    has_amount = "annual_amount" in raw
+    has_salary = "salary" in raw or "savings_rate" in raw
+    if has_amount and has_salary:
+        raise ConfigError(
+            f"{context}: give either `annual_amount` or `salary` + `savings_rate`, not both"
+        )
+    if has_salary:
+        if "salary" not in raw or "savings_rate" not in raw:
+            raise ConfigError(f"{context}: salary mode needs both `salary` and `savings_rate`")
+        salary = float(raw["salary"])
+        savings_rate = float(raw["savings_rate"])
+        if salary < 0:
+            raise ConfigError(f"{context}: salary must be >= 0")
+        if savings_rate < 0:
+            raise ConfigError(f"{context}: savings_rate must be >= 0 (a fraction, e.g. 0.15)")
+        return salary * savings_rate, True
+    if not has_amount:
+        raise ConfigError(f"{context}: missing `annual_amount` (or `salary` + `savings_rate`)")
+    return float(raw["annual_amount"]), False
+
+
 def _build_phase(raw: dict, start_age: int, context: str) -> ContributionPhase:
-    if "annual_amount" not in raw:
-        raise ConfigError(f"{context}: missing `annual_amount`")
-    amount = float(raw["annual_amount"])
+    amount, salary_mode = _resolve_amount(raw, context)
     if amount < 0:
         raise ConfigError(f"{context}: annual_amount must be >= 0")
+    default_increase = _DEFAULT_SALARY_REAL_GROWTH if salary_mode else 0.0
     return ContributionPhase(
         start_age=start_age,
         annual_amount=amount,
         index_to_inflation=bool(raw.get("index_to_inflation", True)),
-        extra_annual_increase=float(raw.get("extra_annual_increase", 0.0)),
+        extra_annual_increase=float(raw.get("extra_annual_increase", default_increase)),
     )
 
 

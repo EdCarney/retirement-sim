@@ -23,14 +23,20 @@ export interface Account {
 
 export interface ContributionChange {
   age: number
-  annual_amount: number
+  annual_amount?: number
+  // Salary mode (YAML/CLI): contribute `savings_rate` of `salary` instead.
+  salary?: number
+  savings_rate?: number
   index_to_inflation?: boolean
   extra_annual_increase?: number
 }
 
 export interface Contribution {
   account: string
-  annual_amount: number
+  annual_amount?: number
+  // Salary mode (YAML/CLI): contribute `savings_rate` of `salary` instead.
+  salary?: number
+  savings_rate?: number
   index_to_inflation?: boolean
   extra_annual_increase?: number
   changes?: ContributionChange[]
