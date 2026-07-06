@@ -53,6 +53,11 @@ social_security:                    # optional; delete this block to disable
 # market:
 #   inflation: {mean: 0.03}
 
+# Optional: annual fee drag (expense ratio) in basis points, applied to every
+# account. Add `fee_drag_bps` on an individual account to override this default.
+# fees:
+#   drag_bps: 50                      # 0.50%/yr
+
 simulation:
   n_sims: 10000
   seed: 42                          # remove for a different draw every run

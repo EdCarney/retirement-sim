@@ -31,6 +31,35 @@ def test_defaults_are_merged(raw_config):
     assert config.market.asset_classes["stocks"].mean == 0.095  # untouched default
 
 
+def test_fees_default_and_effective_fee(raw_config):
+    # No fees block -> zero drag by default.
+    config = build_config(raw_config)
+    assert config.fees.drag_bps == 0.0
+    assert config.fees.account_fee(config.accounts[0]) == 0.0
+
+    # Global default applies to accounts without an override.
+    raw_config["fees"] = {"drag_bps": 50}
+    config = build_config(raw_config)
+    assert config.fees.account_fee(config.accounts[0]) == pytest.approx(0.005)
+
+    # Per-account override wins over the global default.
+    raw_config["accounts"][0]["fee_drag_bps"] = 20
+    config = build_config(raw_config)
+    assert config.fees.account_fee(config.accounts[0]) == pytest.approx(0.002)
+
+
+def test_negative_fees_rejected(raw_config):
+    raw_config["fees"] = {"drag_bps": -10}
+    with pytest.raises(ConfigError, match="fees.drag_bps"):
+        build_config(raw_config)
+
+
+def test_negative_account_fee_rejected(raw_config):
+    raw_config["accounts"][0]["fee_drag_bps"] = -5
+    with pytest.raises(ConfigError, match="fee_drag_bps"):
+        build_config(raw_config)
+
+
 def test_allocation_must_sum_to_one(raw_config):
     raw_config["accounts"][0]["allocation"] = {"stocks": 0.6, "bonds": 0.3}
     with pytest.raises(ConfigError, match="sum"):

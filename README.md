@@ -74,6 +74,7 @@ See `configs/example_income_goal.yaml` (fully commented) and
 | `goal` | Either `retirement_income` with `monthly_income_today` (today's dollars, sustained from retirement to death) or `target_amount` with `amount` and `basis: real\|nominal` (reached by retirement age) |
 | `social_security` | Optional: `monthly_benefit_today` and `claiming_age`; the benefit is COLA'd along each path's inflation and offsets withdrawals |
 | `market` | Optional overrides of the default capital-market assumptions (deep-merged onto `retirement_sim/defaults.yaml`) |
+| `fees` | Optional `drag_bps` (annual expense ratio in basis points) applied to every account; an account's own `fee_drag_bps` overrides it |
 | `simulation` | `n_sims` (default 10,000) and optional `seed` for reproducibility |
 | `output` | Chart directory, `charts: true\|false`, `chart_dollars: real\|nominal`, `show: true\|false` (interactive windows) |
 
