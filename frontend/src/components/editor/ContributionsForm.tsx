@@ -1,3 +1,4 @@
+import { money } from '../../format'
 import type { Contribution, ContributionChange } from '../../types'
 import { CheckField, NumberField, SelectField } from './Fields'
 
@@ -57,9 +58,22 @@ export function ContributionsForm({ contributions, accountNames, onChange }: Pro
   const update = (i: number, next: Contribution) =>
     onChange(contributions.map((c, j) => (j === i ? next : c)))
 
+  // A contribution may instead carry salary + savings_rate (salary mode);
+  // read them defensively so the total stays correct for either form.
+  const annual = (c: Contribution) => {
+    const { salary, savings_rate: rate } = c as { salary?: number; savings_rate?: number }
+    return c.annual_amount ?? (salary != null && rate != null ? salary * rate : 0)
+  }
+  const totalAnnual = contributions.reduce((sum, c) => sum + annual(c), 0)
+
   return (
     <section className="card">
-      <h3>Contributions</h3>
+      <div className="section-head">
+        <h3>Contributions</h3>
+        <span className="section-total">
+          Total <strong>{money(totalAnnual)}</strong>/yr
+        </span>
+      </div>
       <p className="hint">
         Annual amounts in today's dollars (multiply monthly figures by 12); they stop at
         retirement. Scheduled changes reset the amount from a future age — e.g. a CoastFI

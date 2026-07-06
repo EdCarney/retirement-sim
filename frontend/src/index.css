@@ -253,6 +253,30 @@ section.card > h3 {
   font-size: 14.5px;
 }
 
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.section-head h3 {
+  margin: 0;
+  font-size: 14.5px;
+}
+
+.section-total {
+  font-size: 13px;
+  color: var(--ink-secondary);
+  white-space: nowrap;
+}
+
+.section-total strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
 section.card > p.hint {
   margin: 0 0 12px;
   color: var(--ink-muted);
