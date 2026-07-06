@@ -163,6 +163,15 @@ def test_per_account_fee_overrides_global(raw_config, deterministic_market):
     np.testing.assert_allclose(results.balances_at(-1, real=False), expected, rtol=1e-9)
 
 
+def test_student_t_mode_smoke(raw_config):
+    raw_config["market"] = {"method": "student_t"}
+
+    results = _run(raw_config)
+
+    assert np.isfinite(results.history).all()
+    assert 0.0 <= results.success_probability() <= 1.0
+
+
 def test_apply_withdrawal_proportional_and_shortfall():
     balances = np.array([[600.0, 400.0], [10.0, 10.0], [0.0, 0.0]])
     shortfall = apply_withdrawal(balances, np.array([100.0, 100.0, 100.0]))

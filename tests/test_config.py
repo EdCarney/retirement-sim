@@ -198,3 +198,32 @@ def test_correlation_names_with_underscores(raw_config):
     names = config.market.series_names
     i, j = names.index("intl_stocks"), names.index("bonds")
     assert corr[i, j] == 0.2
+
+
+def test_market_method_defaults_to_parametric(raw_config):
+    config = build_config(raw_config)
+    assert config.market.method == "parametric"
+    assert config.market.tail_df == 6.0
+
+
+def test_market_method_student_t_merges_with_defaults(raw_config):
+    raw_config["market"] = {"method": "student_t"}
+    config = build_config(raw_config)
+    assert config.market.method == "student_t"
+    assert config.market.tail_df == 6.0  # default df survives the deep-merge
+    assert config.market.asset_classes["stocks"].mean == 0.095  # untouched default
+
+    raw_config["market"] = {"method": "student_t", "student_t": {"df": 4}}
+    assert build_config(raw_config).market.tail_df == 4.0
+
+
+def test_unknown_market_method_rejected(raw_config):
+    raw_config["market"] = {"method": "banana"}
+    with pytest.raises(ConfigError, match="market.method"):
+        build_config(raw_config)
+
+
+def test_student_t_df_must_exceed_two(raw_config):
+    raw_config["market"] = {"method": "student_t", "student_t": {"df": 2}}
+    with pytest.raises(ConfigError, match="student_t.df"):
+        build_config(raw_config)

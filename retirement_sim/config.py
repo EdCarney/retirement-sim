@@ -59,6 +59,8 @@ class MarketConfig:
     asset_classes: dict[str, SeriesParams]
     inflation: SeriesParams
     correlations: dict[str, float]
+    method: str = "parametric"
+    tail_df: float = 6.0
 
     @property
     def asset_names(self) -> list[str]:
@@ -298,6 +300,9 @@ def _build_series(raw: Any, name: str) -> SeriesParams:
     return params
 
 
+_MARKET_METHODS = ("parametric", "student_t")
+
+
 def _build_market(raw: dict) -> MarketConfig:
     asset_classes = {
         str(name): _build_series(series, f"asset_classes.{name}")
@@ -307,10 +312,20 @@ def _build_market(raw: dict) -> MarketConfig:
         raise ConfigError("market.asset_classes must define at least one asset class")
     if "inflation" in asset_classes:
         raise ConfigError("`inflation` is reserved; configure it under market.inflation")
+    method = str(raw.get("method", "parametric"))
+    if method not in _MARKET_METHODS:
+        options = ", ".join(f"`{m}`" for m in _MARKET_METHODS)
+        raise ConfigError(f"market.method must be one of {options}")
+    student_t = raw.get("student_t") or {}
+    tail_df = float(student_t.get("df", 6.0))
+    if tail_df <= 2.0:
+        raise ConfigError("market.student_t.df must be > 2 (variance must be finite)")
     return MarketConfig(
         asset_classes=asset_classes,
         inflation=_build_series(raw.get("inflation"), "inflation"),
         correlations={str(k): float(v) for k, v in (raw.get("correlations") or {}).items()},
+        method=method,
+        tail_df=tail_df,
     )
 
 

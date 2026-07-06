@@ -8,6 +8,13 @@
 #   cash      T-bills, roughly inflation + 0.5%
 #   inflation Fed 2% target plus a modest premium; i.i.d. draws (no persistence)
 market:
+  # How annual returns and inflation are drawn:
+  #   parametric  correlated lognormal from the mean/vol/correlations below (default)
+  #   student_t   same moments, but fat-tailed Student-t shocks (see student_t.df);
+  #               crashes and booms are more extreme than the lognormal allows
+  method: parametric
+  student_t:
+    df: 6  # degrees of freedom; lower = fatter tails (must be > 2)
   asset_classes:
     stocks: {mean: 0.095, vol: 0.16}
     bonds: {mean: 0.045, vol: 0.06}
