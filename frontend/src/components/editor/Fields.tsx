@@ -2,7 +2,7 @@
 // market means/vols) are DISPLAYED as percentages but STORED as decimals,
 // matching the YAML schema.
 
-import { useLayoutEffect, useRef } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import type { ChangeEvent, CSSProperties } from 'react'
 
 interface NumberFieldProps {
@@ -94,6 +94,57 @@ function GroupedInput({
   )
 }
 
+// A native number input backed by a local editing draft. While the user is
+// typing (focused), the field shows exactly what they typed — including an
+// empty field or a trailing "." — rather than the value derived from the
+// prop. Without this, a parent that rewrites the value on an empty field
+// (e.g. MarketForm falling back to the default when an override is cleared)
+// would snap the field back mid-edit. On blur the draft is dropped so the
+// field re-syncs with the canonical value.
+function PlainNumberInput({
+  value,
+  onChange,
+  percent,
+  step,
+  min,
+  placeholder,
+  style,
+}: {
+  value: number | undefined
+  onChange: (value: number | undefined) => void
+  percent: boolean
+  step?: number
+  min?: number
+  placeholder?: string
+  style?: CSSProperties
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const display = draft !== null ? draft : toDisplay(value, percent)
+
+  return (
+    <input
+      type="number"
+      value={display}
+      step={step ?? (percent ? 0.1 : undefined)}
+      min={min}
+      placeholder={placeholder}
+      style={style}
+      onChange={(e) => {
+        const text = e.target.value
+        setDraft(text)
+        if (text === '') {
+          onChange(undefined)
+        } else {
+          const parsed = Number(text)
+          if (Number.isNaN(parsed)) return
+          onChange(percent ? parseFloat((parsed / 100).toPrecision(12)) : parsed)
+        }
+      }}
+      onBlur={() => setDraft(null)}
+    />
+  )
+}
+
 export function NumberField({
   label,
   value,
@@ -115,21 +166,14 @@ export function NumberField({
   const input = group ? (
     <GroupedInput value={value} onChange={onChange} placeholder={placeholder} style={inputStyle} />
   ) : (
-    <input
-      type="number"
-      value={toDisplay(value, percent)}
-      step={step ?? (percent ? 0.1 : undefined)}
+    <PlainNumberInput
+      value={value}
+      onChange={onChange}
+      percent={percent}
+      step={step}
       min={min}
       placeholder={placeholder}
       style={inputStyle}
-      onChange={(e) => {
-        if (e.target.value === '') {
-          onChange(undefined)
-        } else {
-          const parsed = Number(e.target.value)
-          onChange(percent ? parseFloat((parsed / 100).toPrecision(12)) : parsed)
-        }
-      }}
     />
   )
   return (
