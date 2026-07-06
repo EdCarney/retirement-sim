@@ -266,11 +266,22 @@ def results_payload(results: SimulationResults) -> dict[str, Any]:
     )
 
     median_depletion = results.median_depletion_age()
+    probability = results.success_probability()
+    score_label, score_severity = results.score_band(probability)
+    horizon_age = int(results.ages[-1])
     return {
         "goal": {"type": goal.type, "text": goal_text},
         "n_sims": results.n_sims,
         "seed": results.seed,
-        "success_probability": results.success_probability(),
+        "success_probability": probability,
+        "score": {"label": score_label, "severity": score_severity},
+        "confidence": {
+            "level": 0.90,
+            "percentile": 10,
+            "age": horizon_age,
+            "real": results.confidence_outcome(0.90, real=True),
+            "nominal": results.confidence_outcome(0.90, real=False),
+        },
         "failed_paths": int(np.sum(~np.isnan(results.depletion_age))),
         "median_depletion_age": median_depletion,
         "starting_balance": float(sum(a.balance for a in config.accounts)),

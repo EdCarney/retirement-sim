@@ -8,6 +8,17 @@ import numpy as np
 
 from .config import GOAL_RETIREMENT_INCOME, GOAL_TARGET_AMOUNT, PlanConfig
 
+# Success-probability bands for an at-a-glance score, worst-last. The
+# `severity` keys drive UI coloring (green / amber / red). These thresholds
+# are our own convention — Fidelity's exact Retirement Score cutoffs are not
+# published — so they are easy to tune here in one place.
+SCORE_BANDS: list[tuple[float, str, str]] = [
+    (0.90, "On track", "ok"),
+    (0.80, "Good", "ok"),
+    (0.65, "Fair", "warn"),
+    (0.00, "Needs attention", "bad"),
+]
+
 
 @dataclass(frozen=True)
 class SimulationResults:
@@ -37,6 +48,25 @@ class SimulationResults:
             return float(np.mean(np.isnan(self.depletion_age)))
         balances = self.balances_at(self.retirement_index, real=goal.basis == "real")
         return float(np.mean(balances >= goal.amount))
+
+    def score_band(self, probability: float | None = None) -> tuple[str, str]:
+        """Return the ``(label, severity)`` band for the success probability."""
+        p = self.success_probability() if probability is None else probability
+        for threshold, label, severity in SCORE_BANDS:
+            if p >= threshold:
+                return label, severity
+        return SCORE_BANDS[-1][1], SCORE_BANDS[-1][2]
+
+    def confidence_outcome(self, level: float = 0.90, real: bool = True) -> float:
+        """End-of-horizon balance at the given confidence level.
+
+        A 90% confidence level means "at least this good in 90% of scenarios",
+        i.e. the 10th-percentile outcome — Fidelity's conservative,
+        "significantly below average market" framing. The horizon is the last
+        simulated age (death for income goals, retirement for target goals).
+        """
+        percentile = (1.0 - level) * 100.0
+        return float(np.percentile(self.balances_at(-1, real=real), percentile))
 
     def percentile_bands(self, percentiles: list[float], real: bool = True) -> np.ndarray:
         """Per-year balance percentiles, shape (len(percentiles), n_years + 1)."""

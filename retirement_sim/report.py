@@ -70,7 +70,12 @@ def format_summary(results: SimulationResults) -> str:
     add("")
 
     probability = results.success_probability()
-    add(f"  SUCCESS PROBABILITY: {probability:.1%}")
+    label, _severity = results.score_band(probability)
+    add(f"  SUCCESS PROBABILITY: {probability:.1%}  —  {label}")
+    horizon_age = int(results.ages[-1])
+    at_confidence = results.confidence_outcome(0.90, real=True)
+    add(f"  At 90% confidence (significantly-below-average market): "
+        f"{money(at_confidence)} in today's dollars at age {horizon_age}")
     add("")
 
     add(_percentile_table(results, results.retirement_index, f"Balance at retirement (age {person.retirement_age})"))
