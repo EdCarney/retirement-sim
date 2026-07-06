@@ -5,23 +5,19 @@ import { FanChart } from './FanChart'
 import { Histogram } from './Histogram'
 import { ScenarioChart } from './ScenarioChart'
 
-function probClass(p: number): string {
-  if (p >= 0.85) return 'ok'
-  if (p >= 0.7) return 'warn'
-  return 'bad'
-}
-
 export function ResultsView({ results }: { results: ResultsPayload }) {
   const [basis, setBasis] = useState<Basis>('real')
   const dollars = basis === 'real' ? "today's dollars" : 'nominal dollars'
   const bands = results.bands[basis]
+  const confidence = results.confidence[basis]
 
   return (
     <div className="results">
       <h2>Results</h2>
       <div className="headline">
-        <span className={`prob ${probClass(results.success_probability)}`}>
+        <span className={`prob ${results.score.severity}`}>
           {percent(results.success_probability)}
+          <small className="prob-label">{results.score.label}</small>
         </span>
         <span className="goal-text">
           chance of success — goal: {results.goal.text}
@@ -34,6 +30,11 @@ export function ResultsView({ results }: { results: ResultsPayload }) {
             </>
           )}
         </span>
+      </div>
+      <div className="result-meta">
+        At {percent(results.confidence.level, 0)} confidence
+        (significantly-below-average market): <strong>{money(confidence)}</strong> left at age{' '}
+        {results.confidence.age}, {dollars}.
       </div>
       <div className="result-meta">
         {results.n_sims.toLocaleString('en-US')} simulations

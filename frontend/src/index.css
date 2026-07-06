@@ -415,9 +415,19 @@ pre.yaml {
 }
 
 .headline .prob {
+  display: inline-flex;
+  flex-direction: column;
   font-size: 44px;
   font-weight: 700;
   letter-spacing: -1px;
+  line-height: 1;
+}
+
+.headline .prob-label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  margin-top: 4px;
 }
 
 .headline .prob.ok {

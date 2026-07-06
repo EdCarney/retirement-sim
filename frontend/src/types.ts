@@ -139,6 +139,8 @@ export interface ResultsPayload {
   n_sims: number
   seed: number | null
   success_probability: number
+  score: { label: string; severity: 'ok' | 'warn' | 'bad' }
+  confidence: { level: number; percentile: number; age: number; real: number; nominal: number }
   failed_paths: number
   median_depletion_age: number | null
   starting_balance: number
