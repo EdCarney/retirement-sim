@@ -133,6 +133,24 @@ export default function App() {
     }
   }
 
+  const rename = async () => {
+    if (!selected) return
+    if (!confirmDiscard()) return
+    const current = selected.replace(/\.yaml$/, '')
+    const name = window.prompt('New name for this config:', current)
+    if (!name || name === current) return
+    const file = name.endsWith('.yaml') ? name : `${name}.yaml`
+    try {
+      await api.renameConfig(selected, file)
+      setSelected(null)
+      setDirty(false)
+      await refreshList()
+      await selectConfig(file)
+    } catch (error) {
+      setBanner({ kind: 'error', text: (error as Error).message })
+    }
+  }
+
   const remove = async () => {
     if (!selected) return
     if (!window.confirm(`Delete ${selected}? The file is removed from disk.`)) return
@@ -158,6 +176,7 @@ export default function App() {
         onSelect={selectConfig}
         onCreate={create}
         onDuplicate={duplicate}
+        onRename={rename}
         onDelete={remove}
       />
       <main>

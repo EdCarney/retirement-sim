@@ -93,6 +93,33 @@ def test_create_delete_and_copy(client, configs_dir):
     assert client.delete("/api/configs/copy.yaml").status_code == 404
 
 
+def test_rename_config(client, configs_dir):
+    response = client.post(
+        "/api/configs/example_income_goal.yaml/rename", params={"to": "renamed.yaml"}
+    )
+    assert response.status_code == 200
+    assert response.json()["name"] == "renamed.yaml"
+    assert not (configs_dir / "example_income_goal.yaml").exists()
+    assert load_config(configs_dir / "renamed.yaml")  # content moved intact
+
+    # Missing source is a 404; colliding target is a 409.
+    assert (
+        client.post("/api/configs/gone.yaml/rename", params={"to": "x.yaml"}).status_code == 404
+    )
+    assert (
+        client.post(
+            "/api/configs/renamed.yaml/rename", params={"to": "example_target_amount.yaml"}
+        ).status_code
+        == 409
+    )
+    # An invalid target name is rejected before touching disk.
+    assert (
+        client.post("/api/configs/renamed.yaml/rename", params={"to": "../evil.yaml"}).status_code
+        == 400
+    )
+    assert (configs_dir / "renamed.yaml").exists()
+
+
 def test_validate_endpoint(client):
     raw = client.get("/api/configs/example_income_goal.yaml").json()["config"]
     assert client.post("/api/validate", json=raw).json() == {"valid": True, "error": None}
