@@ -154,6 +154,10 @@ class Goal:
 class SocialSecurity:
     monthly_benefit_today: float
     claiming_age: int
+    # Set when the benefit was derived from a PIA (benefit at full retirement
+    # age) rather than given directly; kept for reporting.
+    pia_monthly: float | None = None
+    full_retirement_age: float | None = None
 
 
 @dataclass(frozen=True)
@@ -477,21 +481,66 @@ def _build_goal(raw: dict) -> Goal:
     raise ConfigError(f"goal.type must be `{GOAL_RETIREMENT_INCOME}` or `{GOAL_TARGET_AMOUNT}`")
 
 
+def _ss_benefit_factor(claiming_age: int, full_retirement_age: float) -> float:
+    """Fraction of PIA received when claiming at ``claiming_age``.
+
+    Standard SSA rules: benefits are reduced 5/9 of 1% per month for the
+    first 36 months claimed before full retirement age (FRA) and 5/12 of 1%
+    per month beyond that; claiming after FRA earns delayed-retirement
+    credits of 2/3 of 1% per month (8%/yr), which stop accruing at age 70.
+    """
+    months = round((claiming_age - full_retirement_age) * 12)
+    if months < 0:
+        early = -months
+        first = min(early, 36)
+        beyond = early - first
+        reduction = first * (5.0 / 900.0) + beyond * (5.0 / 1200.0)
+        return 1.0 - reduction
+    delayed_months = min(months, round((70.0 - full_retirement_age) * 12))
+    return 1.0 + max(delayed_months, 0) * (2.0 / 300.0)
+
+
 def _build_social_security(raw: Any, person: PersonConfig) -> SocialSecurity | None:
     if raw is None:
         return None
-    try:
-        ss = SocialSecurity(
-            monthly_benefit_today=float(raw["monthly_benefit_today"]),
-            claiming_age=int(raw["claiming_age"]),
+    if "claiming_age" not in raw:
+        raise ConfigError("social_security is missing required field 'claiming_age'")
+    claiming_age = int(raw["claiming_age"])
+
+    has_benefit = "monthly_benefit_today" in raw
+    has_pia = "pia_monthly" in raw
+    if has_benefit == has_pia:
+        raise ConfigError(
+            "social_security: give exactly one of `monthly_benefit_today` or `pia_monthly`"
         )
-    except KeyError as exc:
-        raise ConfigError(f"social_security is missing required field {exc}") from None
-    if ss.monthly_benefit_today < 0:
-        raise ConfigError("social_security: monthly_benefit_today must be >= 0")
-    if ss.claiming_age > person.death_age:
+
+    pia_monthly = None
+    full_retirement_age = None
+    if has_pia:
+        pia_monthly = float(raw["pia_monthly"])
+        if pia_monthly < 0:
+            raise ConfigError("social_security: pia_monthly must be >= 0")
+        if not 62 <= claiming_age <= 70:
+            raise ConfigError(
+                "social_security: claiming_age must be between 62 and 70 when using pia_monthly"
+            )
+        full_retirement_age = float(raw.get("full_retirement_age", 67))
+        if not 62 <= full_retirement_age <= 70:
+            raise ConfigError("social_security: full_retirement_age must be between 62 and 70")
+        monthly_benefit = pia_monthly * _ss_benefit_factor(claiming_age, full_retirement_age)
+    else:
+        monthly_benefit = float(raw["monthly_benefit_today"])
+        if monthly_benefit < 0:
+            raise ConfigError("social_security: monthly_benefit_today must be >= 0")
+
+    if claiming_age > person.death_age:
         raise ConfigError("social_security: claiming_age is after death_age")
-    return ss
+    return SocialSecurity(
+        monthly_benefit_today=monthly_benefit,
+        claiming_age=claiming_age,
+        pia_monthly=pia_monthly,
+        full_retirement_age=full_retirement_age,
+    )
 
 
 def _build_fees(raw: dict) -> FeesConfig:
