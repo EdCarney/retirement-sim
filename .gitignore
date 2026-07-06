@@ -1,0 +1,17 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Simulation output (charts)
+output/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/

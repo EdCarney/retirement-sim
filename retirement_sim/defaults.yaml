@@ -1,0 +1,24 @@
+# Default capital-market assumptions (nominal, annual, arithmetic mean/vol).
+# Any value here can be overridden by a `market:` block in the user config;
+# user values are deep-merged on top of these.
+#
+# Rationale:
+#   stocks    ~10% nominal long-run US large-cap, held slightly conservative
+#   bonds     aggregate/intermediate bonds, ~2% real
+#   cash      T-bills, roughly inflation + 0.5%
+#   inflation Fed 2% target plus a modest premium; i.i.d. draws (no persistence)
+market:
+  asset_classes:
+    stocks: {mean: 0.095, vol: 0.16}
+    bonds: {mean: 0.045, vol: 0.06}
+    cash: {mean: 0.030, vol: 0.015}
+  inflation: {mean: 0.025, vol: 0.015}
+  # Symmetric pairwise correlations; series order is asset classes + inflation.
+  # Unlisted pairs default to 0.
+  correlations:
+    stocks_bonds: 0.10
+    stocks_cash: 0.00
+    stocks_inflation: -0.20
+    bonds_cash: 0.30
+    bonds_inflation: -0.30
+    cash_inflation: 0.50
