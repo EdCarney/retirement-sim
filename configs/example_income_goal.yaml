@@ -1,0 +1,63 @@
+# Example: "Can I sustain $8,000/month (today's dollars) in retirement?"
+# Includes a CoastFI-style contribution downshift at age 50 and Social Security.
+# Run: uv run retirement-sim configs/example_income_goal.yaml
+
+person:
+  current_age: 35
+  retirement_age: 62
+  death_age: 95
+
+accounts:
+  # type options: 401k, roth_401k, 403b, trad_ira, roth_ira, brokerage, hsa, cash, other
+  # (labels only — taxes are not modeled; see "Field options" in the README)
+  - name: my_401k
+    type: 401k
+    balance: 250000
+    allocation: {stocks: 0.90, bonds: 0.08, cash: 0.02}
+  - name: roth
+    type: roth_ira
+    balance: 80000
+    allocation: {stocks: 1.00}
+  - name: taxable
+    type: brokerage
+    balance: 60000
+    # Glide path: linearly interpolated between age points, flat beyond the ends.
+    glide_path:
+      - {age: 35, allocation: {stocks: 0.90, bonds: 0.10}}
+      - {age: 62, allocation: {stocks: 0.55, bonds: 0.40, cash: 0.05}}
+      - {age: 95, allocation: {stocks: 0.40, bonds: 0.50, cash: 0.10}}
+
+# Annual amounts in today's dollars. index_to_inflation grows the amount with
+# each path's simulated inflation; extra_annual_increase compounds on top.
+contributions:
+  - account: my_401k
+    annual_amount: 23000
+    index_to_inflation: true
+    extra_annual_increase: 0.02
+    changes:
+      # CoastFI: at 50, downshift to $8k/yr.
+      - {age: 50, annual_amount: 8000, index_to_inflation: true}
+  - account: roth
+    annual_amount: 7000
+    index_to_inflation: true
+
+goal:
+  type: retirement_income
+  monthly_income_today: 8000        # today's dollars, gross (taxes not modeled)
+
+social_security:                    # optional; delete this block to disable
+  monthly_benefit_today: 2900
+  claiming_age: 67
+
+# Optional: override any default market assumption (see retirement_sim/defaults.yaml)
+# market:
+#   inflation: {mean: 0.03}
+
+simulation:
+  n_sims: 10000
+  seed: 42                          # remove for a different draw every run
+
+output:
+  dir: output
+  charts: true
+  chart_dollars: real               # real (today's dollars) or nominal

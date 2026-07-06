@@ -1,0 +1,31 @@
+# Example: "What are my odds of reaching $2.5M (today's dollars) by 65?"
+# Run: uv run retirement-sim configs/example_target_amount.yaml
+
+person:
+  current_age: 40
+  retirement_age: 65
+  death_age: 95                     # unused for target_amount, still required
+
+accounts:
+  - name: retirement
+    type: 401k
+    balance: 400000
+    allocation: {stocks: 0.80, bonds: 0.20}
+
+contributions:
+  - account: retirement
+    annual_amount: 30000
+    index_to_inflation: true
+
+goal:
+  type: target_amount
+  amount: 2500000
+  basis: real                       # compare in today's dollars (or: nominal)
+
+simulation:
+  n_sims: 10000
+  seed: 42
+
+output:
+  dir: output
+  charts: true

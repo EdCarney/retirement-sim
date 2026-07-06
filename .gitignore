@@ -19,5 +19,7 @@ frontend/dist/
 # Browser automation artifacts
 .playwright-mcp/
 
-# Local YAML configs hold personal financial data — keep them out of the repo
+# Local YAML configs hold personal financial data — keep them out of the repo,
+# but track the illustrative example_*.yaml files the README documents.
 configs/*.yaml
+!configs/example_*.yaml
