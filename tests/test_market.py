@@ -1,9 +1,10 @@
 import dataclasses
 
 import numpy as np
+import pytest
 
-from retirement_sim.config import MarketConfig, SeriesParams
-from retirement_sim.market import generate_paths
+from retirement_sim.config import ConfigError, MarketConfig, SeriesParams
+from retirement_sim.market import _read_returns_csv, generate_paths
 
 MARKET = MarketConfig(
     asset_classes={
@@ -155,3 +156,100 @@ def test_parametric_rng_stream_unchanged_by_new_modes():
     factor = eigenvectors * np.sqrt(np.clip(eigenvalues, 0.0, None))
     expected = np.exp(mu + normal_z @ factor.T) - 1.0
     np.testing.assert_array_equal(a, expected[..., :-1])
+
+
+# --- bootstrap mode -------------------------------------------------------
+
+MARKET_B = dataclasses.replace(MARKET, method="bootstrap", block_years=3)
+
+
+def _write_csv(tmp_path, n_hist=10, header="year,stocks,bonds,inflation"):
+    # Returns encode the historical row index (stocks = i/1000) so tests can
+    # decode which year each sampled value came from; bonds = stocks + 0.01
+    # proves rows are sampled jointly.
+    lines = [header]
+    for i in range(n_hist):
+        lines.append(f"{1950 + i},{i / 1000},{i / 1000 + 0.01},{i / 100000}")
+    path = tmp_path / "returns.csv"
+    path.write_text("\n".join(lines) + "\n")
+    return dataclasses.replace(MARKET_B, data_path=str(path))
+
+
+def test_bootstrap_values_come_from_dataset(tmp_path):
+    market = _write_csv(tmp_path)
+    asset_returns, inflation = generate_paths(market, 200, 12, np.random.default_rng(3))
+    assert np.isin(asset_returns[:, :, 0], np.arange(10) / 1000).all()
+    assert np.isin(inflation, np.arange(10) / 100000).all()
+
+
+def test_bootstrap_blocks_are_consecutive_circular_years(tmp_path):
+    market = _write_csv(tmp_path)  # n_hist=10, block_years=3
+    asset_returns, _ = generate_paths(market, 500, 12, np.random.default_rng(4))
+    idx = np.rint(asset_returns[:, :, 0] * 1000).astype(int)
+    for t in range(11):
+        if t % 3 == 2:  # block boundary: next year starts a fresh block
+            continue
+        np.testing.assert_array_equal(idx[:, t + 1], (idx[:, t] + 1) % 10)
+
+
+def test_bootstrap_rows_sampled_jointly(tmp_path):
+    market = _write_csv(tmp_path)
+    asset_returns, _ = generate_paths(market, 200, 12, np.random.default_rng(5))
+    np.testing.assert_allclose(
+        asset_returns[:, :, 1], asset_returns[:, :, 0] + 0.01, atol=1e-12
+    )
+
+
+def test_bootstrap_shapes_and_truncation(tmp_path):
+    market = _write_csv(tmp_path)  # block_years=3 does not divide 7
+    asset_returns, inflation = generate_paths(market, 40, 7, np.random.default_rng(6))
+    assert asset_returns.shape == (40, 7, 2)
+    assert inflation.shape == (40, 7)
+
+
+def test_bootstrap_seed_reproducibility():
+    a = generate_paths(MARKET_B, 50, 10, np.random.default_rng(7))
+    b = generate_paths(MARKET_B, 50, 10, np.random.default_rng(7))
+    np.testing.assert_array_equal(a[0], b[0])
+    np.testing.assert_array_equal(a[1], b[1])
+
+
+def test_bootstrap_unknown_asset_raises(tmp_path):
+    market = _write_csv(tmp_path)
+    market = dataclasses.replace(
+        market, asset_classes={**market.asset_classes, "gold": SeriesParams(0.05, 0.2)}
+    )
+    with pytest.raises(ConfigError, match="'gold' not found in historical data"):
+        generate_paths(market, 10, 5, np.random.default_rng(0))
+
+
+def test_bootstrap_missing_file_raises(tmp_path):
+    market = dataclasses.replace(MARKET_B, data_path=str(tmp_path / "nope.csv"))
+    with pytest.raises(ConfigError, match="cannot read"):
+        generate_paths(market, 10, 5, np.random.default_rng(0))
+
+
+def test_bootstrap_nonconsecutive_years_raises(tmp_path):
+    path = tmp_path / "gap.csv"
+    path.write_text("year,stocks,bonds,inflation\n1950,0.1,0.1,0.02\n1952,0.1,0.1,0.02\n")
+    market = dataclasses.replace(MARKET_B, data_path=str(path))
+    with pytest.raises(ConfigError, match="consecutive"):
+        generate_paths(market, 10, 5, np.random.default_rng(0))
+
+
+def test_bootstrap_block_longer_than_history_raises(tmp_path):
+    market = dataclasses.replace(_write_csv(tmp_path), block_years=11)  # n_hist=10
+    with pytest.raises(ConfigError, match="block_years"):
+        generate_paths(market, 10, 5, np.random.default_rng(0))
+
+
+def test_bundled_csv_sanity():
+    columns, values = _read_returns_csv(None)
+    assert columns == ("stocks", "bonds", "cash", "inflation")
+    assert values.shape[0] >= 97  # 1928 through at least 2024
+    assert ((values > -1.0) & (values < 2.0)).all()
+    # 1931 is row 3 (data starts 1928): worst year of the Depression.
+    assert abs(values[3, 0] - (-0.4384)) < 1e-9
+    # 2008: -36.55% stocks alongside +20% Treasuries (flight to quality).
+    assert abs(values[80, 0] - (-0.3655)) < 1e-9
+    assert values[80, 1] > 0.15

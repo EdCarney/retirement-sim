@@ -118,6 +118,24 @@ classes plus their correlation pairs) under `market:` in your config.
   −100%). Log-space parameters are moment-matched so the sampled arithmetic
   mean/vol equal the configured numbers. Drawing inflation jointly with returns
   means "high inflation + weak bonds" failure sequences appear naturally.
+- **Three return models**, selected with `market.method`:
+  - `parametric` (default) — the lognormal draws described above.
+  - `student_t` — same log-space moments, but the shocks are multivariate
+    Student-t (`market.student_t.df`, default 6): crashes and booms are more
+    extreme, and assets crash together (tail dependence). Arithmetic mean/vol
+    are matched approximately rather than exactly in this mode.
+  - `bootstrap` — resamples `market.bootstrap.block_years`-long (default 5)
+    blocks of actual US history 1928–2025, whole years taken jointly, so fat
+    tails, cross-correlations, *and* multi-year sequences (Depression, 1970s
+    stagflation, 2008) come straight from the record. Configured
+    mean/vol/correlations are ignored; consider `simulation.n_sims` of 25,000+
+    for smoother tails. Data: S&P 500 (incl. dividends), 10-year Treasury, and
+    3-month T-bill returns from A. Damodaran's NYU Stern dataset plus CPI-U
+    December-over-December inflation (FRED `CPIAUCNS`), bundled as
+    `retirement_sim/historical_returns.csv` with provenance in its header —
+    refresh by re-deriving those columns for new years. A custom dataset can be
+    supplied via `market.bootstrap.data` (CSV: `year,<one column per configured
+    asset class>,inflation`, decimals, consecutive years).
 - **Nominal accounting, real reporting.** Each path carries its own cumulative
   inflation index; today's-dollar inputs (spending, contributions, Social
   Security) are inflated along the path, and results are deflated back for the
@@ -135,8 +153,10 @@ classes plus their correlation pairs) under `market:` in your config.
 - **No taxes**: account types are labels; everything grows and is withdrawn as one
   pool. Express your income goal as a gross (pre-tax) number. The withdrawal logic
   is isolated in one function so tax-aware ordering can be added later.
-- **i.i.d. annual draws**: inflation and returns have no year-to-year persistence
-  (no 1970s-style multi-year inflation regimes) and no mean reversion.
+- **i.i.d. annual draws in the parametric modes**: with `parametric` or
+  `student_t`, inflation and returns have no year-to-year persistence (no
+  1970s-style multi-year inflation regimes) and no mean reversion. Use
+  `market.method: bootstrap` when those sequences matter.
 - **No pensions or annuities.**
 - The 4%-rule benchmark test (`tests/test_end_to_end.py`) checks the engine lands
   in the 80–95%-ish success range the literature reports for a 60/40 portfolio

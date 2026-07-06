@@ -227,3 +227,25 @@ def test_student_t_df_must_exceed_two(raw_config):
     raw_config["market"] = {"method": "student_t", "student_t": {"df": 2}}
     with pytest.raises(ConfigError, match="student_t.df"):
         build_config(raw_config)
+
+
+def test_market_method_bootstrap(raw_config):
+    raw_config["market"] = {"method": "bootstrap"}
+    config = build_config(raw_config)
+    assert config.market.method == "bootstrap"
+    assert config.market.block_years == 5  # default from defaults.yaml
+    assert config.market.data_path is None  # packaged dataset
+
+    raw_config["market"] = {
+        "method": "bootstrap",
+        "bootstrap": {"block_years": 3, "data": "my_returns.csv"},
+    }
+    config = build_config(raw_config)
+    assert config.market.block_years == 3
+    assert config.market.data_path == "my_returns.csv"
+
+
+def test_bootstrap_block_years_must_be_positive(raw_config):
+    raw_config["market"] = {"method": "bootstrap", "bootstrap": {"block_years": 0}}
+    with pytest.raises(ConfigError, match="block_years"):
+        build_config(raw_config)
