@@ -40,6 +40,12 @@ contributions:
   - account: roth
     annual_amount: 7000
     index_to_inflation: true
+    # Alternatively, express a contribution as a share of salary. This
+    # contributes 15% of a $120k salary and, by default, grows it at
+    # inflation + 1.5% (Fidelity's salary-growth assumption):
+    # - account: roth
+    #   salary: 120000
+    #   savings_rate: 0.15
 
 goal:
   type: retirement_income

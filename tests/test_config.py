@@ -95,6 +95,42 @@ def test_contribution_unknown_account(raw_config):
         build_config(raw_config)
 
 
+def test_salary_mode_contribution(raw_config):
+    raw_config["contributions"] = [
+        {"account": "main", "salary": 120_000, "savings_rate": 0.15}
+    ]
+    config = build_config(raw_config)
+    phase = config.contributions[0].phases[0]
+    assert phase.annual_amount == pytest.approx(18_000)
+    # Salary mode defaults to Fidelity's inflation + 1.5% real growth.
+    assert phase.extra_annual_increase == pytest.approx(0.015)
+    assert phase.index_to_inflation is True
+
+
+def test_salary_mode_increase_override(raw_config):
+    raw_config["contributions"] = [
+        {"account": "main", "salary": 100_000, "savings_rate": 0.1, "extra_annual_increase": 0.0}
+    ]
+    config = build_config(raw_config)
+    phase = config.contributions[0].phases[0]
+    assert phase.annual_amount == pytest.approx(10_000)
+    assert phase.extra_annual_increase == 0.0  # explicit override wins
+
+
+def test_salary_and_amount_conflict(raw_config):
+    raw_config["contributions"] = [
+        {"account": "main", "annual_amount": 5000, "salary": 100_000, "savings_rate": 0.1}
+    ]
+    with pytest.raises(ConfigError, match="not both"):
+        build_config(raw_config)
+
+
+def test_salary_mode_requires_both_fields(raw_config):
+    raw_config["contributions"] = [{"account": "main", "salary": 100_000}]
+    with pytest.raises(ConfigError, match="both `salary` and `savings_rate`"):
+        build_config(raw_config)
+
+
 def test_contribution_change_after_retirement(raw_config):
     raw_config["contributions"] = [
         {
