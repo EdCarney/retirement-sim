@@ -6,6 +6,7 @@ interface Props {
   onSelect: (name: string) => void
   onCreate: () => void
   onDuplicate: () => void
+  onRename: () => void
   onDelete: () => void
 }
 
@@ -14,7 +15,15 @@ const GOAL_TAGS: Record<string, string> = {
   target_amount: 'target',
 }
 
-export function ConfigList({ configs, selected, onSelect, onCreate, onDuplicate, onDelete }: Props) {
+export function ConfigList({
+  configs,
+  selected,
+  onSelect,
+  onCreate,
+  onDuplicate,
+  onRename,
+  onDelete,
+}: Props) {
   return (
     <nav className="sidebar">
       <h1>
@@ -39,6 +48,11 @@ export function ConfigList({ configs, selected, onSelect, onCreate, onDuplicate,
         <button onClick={onCreate}>new</button>
         <button onClick={onDuplicate} disabled={!selected}>
           duplicate
+        </button>
+      </div>
+      <div className="actions">
+        <button onClick={onRename} disabled={!selected}>
+          rename
         </button>
         <button onClick={onDelete} disabled={!selected}>
           delete

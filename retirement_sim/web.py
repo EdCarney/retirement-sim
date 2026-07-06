@@ -147,6 +147,19 @@ def create_app(configs_dir: Path, frontend_dist: Path | None = None) -> FastAPI:
         path.write_text(text)
         return {"name": name, "config": raw, "yaml": text, "error": None}
 
+    @app.post("/api/configs/{name}/rename")
+    def rename_config(name: str, to: str) -> dict[str, Any]:
+        source = config_path(name)
+        target = config_path(to)
+        if not source.exists():
+            raise HTTPException(404, f"no such config: {name}")
+        if target == source:
+            return {"name": to}
+        if target.exists():
+            raise HTTPException(409, f"{to} already exists")
+        source.rename(target)
+        return {"name": to}
+
     @app.delete("/api/configs/{name}")
     def delete_config(name: str) -> dict[str, Any]:
         path = config_path(name)

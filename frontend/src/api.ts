@@ -48,6 +48,12 @@ export const api = {
       { method: 'POST' },
     ),
 
+  renameConfig: (name: string, to: string) =>
+    request<{ name: string }>(
+      `/api/configs/${encodeURIComponent(name)}/rename?to=${encodeURIComponent(to)}`,
+      { method: 'POST' },
+    ),
+
   deleteConfig: (name: string) =>
     request<{ deleted: string }>(`/api/configs/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 
