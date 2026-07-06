@@ -172,6 +172,15 @@ def test_student_t_mode_smoke(raw_config):
     assert 0.0 <= results.success_probability() <= 1.0
 
 
+def test_bootstrap_mode_smoke(raw_config):
+    raw_config["market"] = {"method": "bootstrap"}
+
+    results = _run(raw_config)
+
+    assert np.isfinite(results.history).all()
+    assert 0.0 <= results.success_probability() <= 1.0
+
+
 def test_apply_withdrawal_proportional_and_shortfall():
     balances = np.array([[600.0, 400.0], [10.0, 10.0], [0.0, 0.0]])
     shortfall = apply_withdrawal(balances, np.array([100.0, 100.0, 100.0]))

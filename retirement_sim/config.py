@@ -61,6 +61,8 @@ class MarketConfig:
     correlations: dict[str, float]
     method: str = "parametric"
     tail_df: float = 6.0
+    block_years: int = 5
+    data_path: str | None = None
 
     @property
     def asset_names(self) -> list[str]:
@@ -300,7 +302,7 @@ def _build_series(raw: Any, name: str) -> SeriesParams:
     return params
 
 
-_MARKET_METHODS = ("parametric", "student_t")
+_MARKET_METHODS = ("parametric", "student_t", "bootstrap")
 
 
 def _build_market(raw: dict) -> MarketConfig:
@@ -320,12 +322,19 @@ def _build_market(raw: dict) -> MarketConfig:
     tail_df = float(student_t.get("df", 6.0))
     if tail_df <= 2.0:
         raise ConfigError("market.student_t.df must be > 2 (variance must be finite)")
+    bootstrap = raw.get("bootstrap") or {}
+    block_years = int(bootstrap.get("block_years", 5))
+    if block_years < 1:
+        raise ConfigError("market.bootstrap.block_years must be >= 1")
+    data_path = None if bootstrap.get("data") is None else str(bootstrap["data"])
     return MarketConfig(
         asset_classes=asset_classes,
         inflation=_build_series(raw.get("inflation"), "inflation"),
         correlations={str(k): float(v) for k, v in (raw.get("correlations") or {}).items()},
         method=method,
         tail_df=tail_df,
+        block_years=block_years,
+        data_path=data_path,
     )
 
 
