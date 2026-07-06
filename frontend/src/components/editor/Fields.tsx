@@ -2,11 +2,16 @@
 // market means/vols) are DISPLAYED as percentages but STORED as decimals,
 // matching the YAML schema.
 
+import { useLayoutEffect, useRef } from 'react'
+import type { ChangeEvent, CSSProperties } from 'react'
+
 interface NumberFieldProps {
   label?: string
   value: number | undefined
   onChange: (value: number | undefined) => void
   percent?: boolean
+  /** Render as a whole-number field with live thousands separators (e.g. 130,000). */
+  group?: boolean
   suffix?: string
   step?: number
   min?: number
@@ -21,24 +26,102 @@ function toDisplay(value: number | undefined, percent: boolean): string {
   return String(parseFloat((value * 100).toPrecision(12)))
 }
 
+// Insert commas every three digits (integers only).
+function groupDigits(digits: string): string {
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
+// A whole-number input that shows thousands separators as you type. Native
+// number inputs can't render commas, so this is a text input that strips
+// non-digits on every keystroke and re-groups, restoring the caret to the same
+// logical position (counted in digits) so inserted commas don't shift it.
+function GroupedInput({
+  value,
+  onChange,
+  placeholder,
+  style,
+}: {
+  value: number | undefined
+  onChange: (value: number | undefined) => void
+  placeholder?: string
+  style?: CSSProperties
+}) {
+  const ref = useRef<HTMLInputElement>(null)
+  const caret = useRef<number | null>(null)
+
+  useLayoutEffect(() => {
+    if (caret.current !== null && ref.current) {
+      ref.current.setSelectionRange(caret.current, caret.current)
+      caret.current = null
+    }
+  })
+
+  const display = value === undefined || Number.isNaN(value) ? '' : groupDigits(String(Math.round(value)))
+
+  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value
+    const pos = e.target.selectionStart ?? raw.length
+    const digitsBeforeCaret = raw.slice(0, pos).replace(/\D/g, '').length
+    const digits = raw.replace(/\D/g, '')
+
+    if (digits === '') {
+      onChange(undefined)
+      caret.current = 0
+      return
+    }
+    onChange(Number(digits))
+
+    // Walk the regrouped string to the caret's digit index, skipping commas.
+    const grouped = groupDigits(String(Number(digits)))
+    let seen = 0
+    let i = 0
+    for (; i < grouped.length && seen < digitsBeforeCaret; i++) {
+      if (grouped[i] >= '0' && grouped[i] <= '9') seen++
+    }
+    caret.current = i
+  }
+
+  return (
+    <input
+      ref={ref}
+      type="text"
+      inputMode="numeric"
+      value={display}
+      placeholder={placeholder}
+      style={style}
+      onChange={handleChange}
+    />
+  )
+}
+
 export function NumberField({
   label,
   value,
   onChange,
   percent = false,
+  group = false,
   suffix,
   step,
   min,
   placeholder,
   width,
 }: NumberFieldProps) {
-  const input = (
+  const sfx = suffix ?? (percent ? '%' : undefined)
+  // Leave room on the right for the unit label, scaled to its length.
+  const inputStyle: CSSProperties | undefined = sfx
+    ? { paddingRight: 14 + sfx.length * 7 }
+    : undefined
+
+  const input = group ? (
+    <GroupedInput value={value} onChange={onChange} placeholder={placeholder} style={inputStyle} />
+  ) : (
     <input
       type="number"
       value={toDisplay(value, percent)}
       step={step ?? (percent ? 0.1 : undefined)}
       min={min}
       placeholder={placeholder}
+      style={inputStyle}
       onChange={(e) => {
         if (e.target.value === '') {
           onChange(undefined)
@@ -49,7 +132,6 @@ export function NumberField({
       }}
     />
   )
-  const sfx = suffix ?? (percent ? '%' : undefined)
   return (
     <div className="field" style={width ? { width, minWidth: width } : undefined}>
       {label && <label>{label}</label>}

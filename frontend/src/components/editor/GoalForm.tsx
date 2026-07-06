@@ -31,6 +31,7 @@ export function GoalForm({ goal, schema, onChange }: Props) {
             value={goal.monthly_income_today}
             onChange={(v) => onChange({ ...goal, monthly_income_today: v })}
             suffix="$/mo"
+            group
             min={0}
           />
         ) : (
@@ -40,6 +41,7 @@ export function GoalForm({ goal, schema, onChange }: Props) {
               value={goal.amount}
               onChange={(v) => onChange({ ...goal, amount: v })}
               suffix="$"
+              group
               min={0}
             />
             <SelectField

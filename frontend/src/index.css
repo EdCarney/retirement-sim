@@ -283,8 +283,17 @@ section.card > p.hint {
   position: relative;
 }
 
-.field .suffix-wrap input {
-  padding-right: 26px;
+/* Hide native number spinners inside suffix wraps so their arrows don't
+   collide with the unit label; keyboard up/down still steps the value. */
+.field .suffix-wrap input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.field .suffix-wrap input[type='number']::-webkit-outer-spin-button,
+.field .suffix-wrap input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .field .suffix-wrap .suffix {

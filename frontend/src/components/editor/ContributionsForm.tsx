@@ -30,6 +30,7 @@ function ChangeRow({
         value={change.annual_amount}
         onChange={(v) => onChange({ ...change, annual_amount: v ?? 0 })}
         suffix="$/yr"
+        group
         min={0}
         width={150}
       />
@@ -88,6 +89,7 @@ export function ContributionsForm({ contributions, accountNames, onChange }: Pro
               value={contribution.annual_amount}
               onChange={(v) => update(i, { ...contribution, annual_amount: v ?? 0 })}
               suffix="$/yr"
+              group
               min={0}
               width={150}
             />

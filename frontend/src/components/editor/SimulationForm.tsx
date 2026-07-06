@@ -17,6 +17,7 @@ export function SimulationForm({ simulation, onChange }: Props) {
           value={simulation?.n_sims}
           onChange={(v) => onChange({ ...simulation, n_sims: v })}
           placeholder="10000"
+          group
           min={1}
         />
         <NumberField

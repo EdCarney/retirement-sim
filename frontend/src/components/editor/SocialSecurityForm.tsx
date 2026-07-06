@@ -30,6 +30,7 @@ export function SocialSecurityForm({ socialSecurity, onChange }: Props) {
               value={socialSecurity.monthly_benefit_today}
               onChange={(v) => onChange({ ...socialSecurity, monthly_benefit_today: v ?? 0 })}
               suffix="$/mo"
+              group
               min={0}
             />
             <NumberField

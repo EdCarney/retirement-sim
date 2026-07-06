@@ -15,3 +15,6 @@ output/
 # Frontend
 frontend/node_modules/
 frontend/dist/
+
+# Browser automation artifacts
+.playwright-mcp/

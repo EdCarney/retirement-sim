@@ -109,6 +109,7 @@ function AccountCard({
           value={account.balance}
           onChange={(v) => onChange({ ...account, balance: v ?? 0 })}
           suffix="$"
+          group
           min={0}
           width={150}
         />
