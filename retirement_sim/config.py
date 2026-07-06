@@ -103,6 +103,9 @@ class Account:
     balance: float
     allocation: dict[str, float] | None = None
     glide_path: tuple[GlidePathPoint, ...] | None = None
+    # Annual fee drag (expense ratio) in basis points; None means "use the
+    # plan-wide default" (``fees.drag_bps``).
+    fee_drag_bps: float | None = None
 
 
 @dataclass(frozen=True)
@@ -154,6 +157,23 @@ class SocialSecurity:
 
 
 @dataclass(frozen=True)
+class FeesConfig:
+    """Plan-wide default annual fee drag (expense ratio) in basis points.
+
+    Applied multiplicatively to each account's balance every year, so a
+    50 bps drag multiplies growth by (1 - 0.0050). An account may override
+    it with its own ``fee_drag_bps``.
+    """
+
+    drag_bps: float = 0.0
+
+    def account_fee(self, account: Account) -> float:
+        """Effective annual fee fraction for ``account`` (bps -> fraction)."""
+        bps = account.fee_drag_bps if account.fee_drag_bps is not None else self.drag_bps
+        return bps / 10_000.0
+
+
+@dataclass(frozen=True)
 class SimulationSettings:
     n_sims: int = 10_000
     seed: int | None = None
@@ -175,6 +195,7 @@ class PlanConfig:
     goal: Goal
     market: MarketConfig
     social_security: SocialSecurity | None = None
+    fees: FeesConfig = field(default_factory=FeesConfig)
     simulation: SimulationSettings = field(default_factory=SimulationSettings)
     output: OutputSettings = field(default_factory=OutputSettings)
 
@@ -207,6 +228,7 @@ def build_config(raw: dict[str, Any]) -> PlanConfig:
     )
     goal = _build_goal(raw["goal"])
     social_security = _build_social_security(raw.get("social_security"), person)
+    fees = _build_fees(raw.get("fees") or {})
     simulation = _build_simulation(raw.get("simulation") or {})
     output = _build_output(raw.get("output") or {})
 
@@ -218,6 +240,7 @@ def build_config(raw: dict[str, Any]) -> PlanConfig:
         goal=goal,
         market=market,
         social_security=social_security,
+        fees=fees,
         simulation=simulation,
         output=output,
     )
@@ -348,6 +371,12 @@ def _build_account(raw: dict, asset_names: list[str]) -> Account:
     if balance < 0:
         raise ConfigError(f"{context}: balance must be >= 0")
 
+    fee_drag_bps = raw.get("fee_drag_bps")
+    if fee_drag_bps is not None:
+        fee_drag_bps = float(fee_drag_bps)
+        if fee_drag_bps < 0:
+            raise ConfigError(f"{context}: fee_drag_bps must be >= 0")
+
     has_alloc = "allocation" in raw
     has_glide = "glide_path" in raw
     if has_alloc == has_glide:
@@ -375,7 +404,14 @@ def _build_account(raw: dict, asset_names: list[str]) -> Account:
             raise ConfigError(f"{context}: glide_path ages must be strictly increasing")
         glide_path = tuple(points)
 
-    return Account(name=str(name), type=acct_type, balance=balance, allocation=allocation, glide_path=glide_path)
+    return Account(
+        name=str(name),
+        type=acct_type,
+        balance=balance,
+        allocation=allocation,
+        glide_path=glide_path,
+        fee_drag_bps=fee_drag_bps,
+    )
 
 
 def _check_unique_names(accounts: tuple[Account, ...]) -> None:
@@ -456,6 +492,15 @@ def _build_social_security(raw: Any, person: PersonConfig) -> SocialSecurity | N
     if ss.claiming_age > person.death_age:
         raise ConfigError("social_security: claiming_age is after death_age")
     return ss
+
+
+def _build_fees(raw: dict) -> FeesConfig:
+    if not isinstance(raw, dict):
+        raise ConfigError("fees must be a mapping (e.g. fees: {drag_bps: 50})")
+    drag_bps = float(raw.get("drag_bps", 0.0))
+    if drag_bps < 0:
+        raise ConfigError("fees.drag_bps must be >= 0")
+    return FeesConfig(drag_bps=drag_bps)
 
 
 def _build_simulation(raw: dict) -> SimulationSettings:

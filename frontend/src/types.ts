@@ -18,6 +18,7 @@ export interface Account {
   balance: number
   allocation?: Record<string, number>
   glide_path?: GlidePoint[]
+  fee_drag_bps?: number
 }
 
 export interface ContributionChange {
@@ -65,6 +66,7 @@ export interface RawConfig {
   goal: Goal
   social_security?: SocialSecurity
   market?: MarketOverride
+  fees?: { drag_bps?: number }
   simulation?: { n_sims?: number; seed?: number | null }
   output?: Record<string, unknown>
 }

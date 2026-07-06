@@ -223,6 +223,13 @@ export default function App() {
                     else next.market = market
                     updateDraft(next)
                   }}
+                  feeDragBps={draft.fees?.drag_bps}
+                  onFeeChange={(bps) => {
+                    const next = { ...draft }
+                    if (!bps) delete next.fees
+                    else next.fees = { drag_bps: bps }
+                    updateDraft(next)
+                  }}
                 />
                 <SimulationForm
                   simulation={draft.simulation}

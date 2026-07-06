@@ -5,11 +5,13 @@ interface Props {
   market: MarketOverride | undefined
   schema: Schema
   onChange: (market: MarketOverride | undefined) => void
+  feeDragBps: number | undefined
+  onFeeChange: (bps: number | undefined) => void
 }
 
 // The config stores only *overrides* of the packaged defaults; fields here
 // show the effective value and write an override only when it differs.
-export function MarketForm({ market, schema, onChange }: Props) {
+export function MarketForm({ market, schema, onChange, feeDragBps, onFeeChange }: Props) {
   const defaults = schema.market_defaults
 
   const effective = (series: string, field: 'mean' | 'vol'): number => {
@@ -88,6 +90,21 @@ export function MarketForm({ market, schema, onChange }: Props) {
           {row('inflation')}
         </tbody>
       </table>
+      <div className="field-row" style={{ marginTop: 14 }}>
+        <NumberField
+          label="fee drag"
+          value={feeDragBps}
+          onChange={onFeeChange}
+          suffix="bps"
+          min={0}
+          placeholder="0"
+          width={130}
+        />
+      </div>
+      <p className="hint" style={{ marginTop: 0 }}>
+        Annual expense ratio applied to every account (100 bps = 1%/yr). Override it on an
+        individual account with <code>fee_drag_bps</code> in the YAML.
+      </p>
     </section>
   )
 }

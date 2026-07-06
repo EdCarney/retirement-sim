@@ -107,6 +107,9 @@ def _assumptions_table(results: SimulationResults) -> str:
         params = market.asset_classes[name]
         lines.append(f"  {name:<12}{params.mean:>8.1%}{params.vol:>8.1%}")
     lines.append(f"  {'inflation':<12}{market.inflation.mean:>8.1%}{market.inflation.vol:>8.1%}")
+    fees = results.config.fees
+    if fees.drag_bps or any(a.fee_drag_bps for a in results.config.accounts):
+        lines.append(f"  {'fee drag':<12}{fees.drag_bps:>7.0f}bps (default; per-account may override)")
     return "\n".join(lines)
 
 

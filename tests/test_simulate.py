@@ -133,6 +133,36 @@ def test_retirement_snapshot_is_pre_withdrawal(raw_config, deterministic_market)
     )
 
 
+def test_fee_drag_reduces_growth(raw_config, deterministic_market):
+    raw_config["market"] = deterministic_market
+    raw_config["accounts"][0]["allocation"] = {"stocks": 1.0}
+    raw_config["contributions"] = []
+    raw_config["goal"] = {"type": "target_amount", "amount": 1}
+    raw_config["fees"] = {"drag_bps": 50}  # 0.50% per year
+
+    results = _run(raw_config)
+
+    n = 25  # ages 40..64 grow; snapshot at 65
+    # Each year: grow 6%, then keep (1 - 0.005) after fees.
+    expected = 500_000 * ((1.06) * (1 - 0.005)) ** n
+    np.testing.assert_allclose(results.balances_at(-1, real=False), expected, rtol=1e-9)
+
+
+def test_per_account_fee_overrides_global(raw_config, deterministic_market):
+    raw_config["market"] = deterministic_market
+    raw_config["accounts"][0]["allocation"] = {"stocks": 1.0}
+    raw_config["accounts"][0]["fee_drag_bps"] = 0  # override the global default away
+    raw_config["contributions"] = []
+    raw_config["goal"] = {"type": "target_amount", "amount": 1}
+    raw_config["fees"] = {"drag_bps": 50}
+
+    results = _run(raw_config)
+
+    # The per-account 0 bps wins, so growth is the plain 6% closed form.
+    expected = 500_000 * 1.06**25
+    np.testing.assert_allclose(results.balances_at(-1, real=False), expected, rtol=1e-9)
+
+
 def test_apply_withdrawal_proportional_and_shortfall():
     balances = np.array([[600.0, 400.0], [10.0, 10.0], [0.0, 0.0]])
     shortfall = apply_withdrawal(balances, np.array([100.0, 100.0, 100.0]))

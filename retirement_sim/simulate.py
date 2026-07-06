@@ -76,6 +76,9 @@ def run_simulation(
 
     account_index = {account.name: i for i, account in enumerate(config.accounts)}
     balances = np.tile([float(a.balance) for a in config.accounts], (n_sims, 1))
+    # Per-account annual fee multiplier: an expense ratio charged on assets,
+    # so growth is scaled by (1 - fee) each year.
+    fee_keep = np.array([1.0 - config.fees.account_fee(a) for a in config.accounts])
     cum_inflation = np.ones(n_sims)
 
     history = np.empty((n_sims, n_years + 1))
@@ -102,7 +105,7 @@ def run_simulation(
             depletion_age[newly_depleted & np.isnan(depletion_age)] = age
 
         for j in range(len(config.accounts)):
-            balances[:, j] *= 1.0 + asset_returns[:, t, :] @ weights[j][t]
+            balances[:, j] *= (1.0 + asset_returns[:, t, :] @ weights[j][t]) * fee_keep[j]
 
         cum_inflation = cum_inflation * (1.0 + inflation[:, t])
 
