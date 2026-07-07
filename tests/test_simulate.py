@@ -181,6 +181,17 @@ def test_bootstrap_mode_smoke(raw_config):
     assert 0.0 <= results.success_probability() <= 1.0
 
 
+def test_all_mode_runs_n_sims_per_model(raw_config):
+    raw_config["market"] = {"method": "all"}
+
+    results = _run(raw_config)  # config asks for 100 sims
+
+    assert results.n_sims == 300  # pooled: 100 per model
+    assert results.history.shape[0] == 300
+    assert np.isfinite(results.history).all()
+    assert 0.0 <= results.success_probability() <= 1.0
+
+
 def test_apply_withdrawal_proportional_and_shortfall():
     balances = np.array([[600.0, 400.0], [10.0, 10.0], [0.0, 0.0]])
     shortfall = apply_withdrawal(balances, np.array([100.0, 100.0, 100.0]))

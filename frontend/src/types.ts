@@ -64,6 +64,9 @@ export interface SeriesParams {
 }
 
 export interface MarketOverride {
+  method?: string
+  student_t?: { df?: number }
+  bootstrap?: { block_years?: number; data?: string }
   asset_classes?: Record<string, Partial<SeriesParams>>
   inflation?: Partial<SeriesParams>
   correlations?: Record<string, number>
@@ -103,7 +106,11 @@ export interface Schema {
   goal_bases: string[]
   chart_dollars: string[]
   asset_classes: string[]
+  market_methods: string[]
   market_defaults: {
+    method: string
+    student_t: { df: number }
+    bootstrap: { block_years: number }
     asset_classes: Record<string, SeriesParams>
     inflation: SeriesParams
     correlations: Record<string, number>

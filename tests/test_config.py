@@ -245,6 +245,11 @@ def test_market_method_bootstrap(raw_config):
     assert config.market.data_path == "my_returns.csv"
 
 
+def test_market_method_all(raw_config):
+    raw_config["market"] = {"method": "all"}
+    assert build_config(raw_config).market.method == "all"
+
+
 def test_bootstrap_block_years_must_be_positive(raw_config):
     raw_config["market"] = {"method": "bootstrap", "bootstrap": {"block_years": 0}}
     with pytest.raises(ConfigError, match="block_years"):

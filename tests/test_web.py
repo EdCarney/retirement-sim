@@ -136,6 +136,8 @@ def test_schema_endpoint(client):
     assert "roth_401k" in schema["account_types"]
     assert schema["goal_types"] == ["retirement_income", "target_amount"]
     assert schema["asset_classes"] == ["stocks", "bonds", "cash"]
+    assert schema["market_methods"] == ["parametric", "student_t", "bootstrap", "all"]
+    assert schema["market_defaults"]["method"] == "parametric"
     assert schema["market_defaults"]["inflation"]["mean"] == 0.025
 
 

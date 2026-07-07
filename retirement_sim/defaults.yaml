@@ -16,6 +16,8 @@ market:
   #               fat tails AND sequence risk. The mean/vol/correlation settings
   #               below are IGNORED in this mode. Consider simulation.n_sims of
   #               25000+ for smoother tails.
+  #   all         ensemble: run n_sims paths through EVERY model above and pool
+  #               them, so results reflect all three models equally (3x the paths)
   method: parametric
   student_t:
     df: 6  # degrees of freedom; lower = fatter tails (must be > 2)
