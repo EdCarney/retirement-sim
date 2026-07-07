@@ -1,15 +1,22 @@
 import type { MarketOverride, Schema } from '../../types'
-import { InfoTip, NumberField, SelectField } from './Fields'
+import { CheckField, InfoTip, NumberField, SelectField } from './Fields'
 
-// One-line description per market.method, shown under the selector.
+// One-line description per market.method, shown under the selector. The
+// bootstrap entry has a recenter-on variant computed inline below.
 const METHOD_HINTS: Record<string, string> = {
   parametric: 'Correlated lognormal draws from the means/vols below.',
   student_t:
     'Same means/vols below, but fat-tailed Student-t shocks: crashes and booms are more extreme, and assets crash together.',
   bootstrap:
-    'Resamples multi-year blocks of actual 1928+ US history (sequence risk included). The means/vols below are ignored; consider 25,000+ simulations.',
+    'Resamples multi-year blocks of actual 1928+ US history (sequence risk included). The means/vols below are ignored — raw history reflects its own, richer means; consider 25,000+ simulations.',
   all: 'Ensemble: runs the configured number of simulations through every model above and pools the results (3× the paths). The means/vols below apply to the parametric and student_t components.',
 }
+
+const RECENTER_INFO =
+  'Shifts each historical series so its average return matches the mean you set below, ' +
+  'while keeping the historical volatility, co-movement, and sequence risk. Raw history ' +
+  'has richer means (e.g. ~11.7% stocks) than the defaults, so recentering makes the ' +
+  'bootstrap comparable to the other models. Vols stay historical either way.'
 
 interface Props {
   market: MarketOverride | undefined
@@ -31,8 +38,33 @@ export function MarketForm({ market, schema, onChange, feeDragBps, onFeeChange }
     else next.method = value
     onChange(Object.keys(next).length === 0 ? undefined : next)
   }
-  // The mean/vol table drives the parametric and student_t models only.
-  const tableIgnored = method === 'bootstrap'
+
+  // Recentering is a bootstrap option; it also feeds the bootstrap component of
+  // the `all` ensemble. Off by default (matching raw historical means).
+  const recenterable = method === 'bootstrap' || method === 'all'
+  const recenter = recenterable && (market?.bootstrap?.recenter ?? defaults.bootstrap.recenter)
+  const setRecenter = (on: boolean) => {
+    const next: MarketOverride = { ...market, bootstrap: { ...market?.bootstrap } }
+    if (on) next.bootstrap!.recenter = true
+    else delete next.bootstrap!.recenter
+    if (Object.keys(next.bootstrap!).length === 0) delete next.bootstrap
+    onChange(Object.keys(next).length === 0 ? undefined : next)
+  }
+
+  // Which columns of the mean/vol table actually drive the chosen model.
+  // Bootstrap always takes vols from history; it takes means from history too
+  // unless recentered. Every other method (incl. `all`, via its parametric and
+  // student_t components) uses both columns.
+  const meanApplies = method !== 'bootstrap' || recenter
+  const volApplies = method !== 'bootstrap'
+  const tableIgnored = !meanApplies && !volApplies
+
+  const methodHint =
+    method === 'bootstrap' && recenter
+      ? 'Resamples multi-year blocks of actual 1928+ US history (sequence risk included), ' +
+        'recentered so each series matches the configured mean below while keeping historical ' +
+        'volatility and co-movement. Consider 25,000+ simulations.'
+      : (METHOD_HINTS[method] ?? '')
 
   const effective = (series: string, field: 'mean' | 'vol'): number => {
     const override =
@@ -80,10 +112,10 @@ export function MarketForm({ market, schema, onChange, feeDragBps, onFeeChange }
           <span style={{ color: 'var(--accent)' }} title="overrides the default"> •</span>
         )}
       </td>
-      <td>
+      <td style={{ opacity: meanApplies ? 1 : 0.45 }}>
         <NumberField value={effective(series, 'mean')} onChange={(v) => setValue(series, 'mean', v)} percent width={110} />
       </td>
-      <td>
+      <td style={{ opacity: volApplies ? 1 : 0.45 }}>
         <NumberField value={effective(series, 'vol')} onChange={(v) => setValue(series, 'vol', v)} percent width={110} />
       </td>
     </tr>
@@ -106,21 +138,36 @@ export function MarketForm({ market, schema, onChange, feeDragBps, onFeeChange }
           </span>
         )}
       </div>
-      <p className="hint">{METHOD_HINTS[method] ?? ''}</p>
+      <p className="hint">{methodHint}</p>
+      {recenterable && (
+        <div className="field-row" style={{ marginTop: 2, marginBottom: 6 }}>
+          <CheckField
+            label="recenter to configured means"
+            checked={recenter}
+            onChange={setRecenter}
+            info={RECENTER_INFO}
+          />
+          {market?.bootstrap?.recenter !== undefined && (
+            <span style={{ color: 'var(--accent)', alignSelf: 'center' }} title="overrides the default">
+              •
+            </span>
+          )}
+        </div>
+      )}
       <p className="hint" style={{ opacity: tableIgnored ? 0.6 : 1 }}>
         Average annual return and volatility, nominal, per asset class. Values differing from the
         packaged defaults (marked •) are saved as overrides in this config's <code>market:</code>{' '}
         block; correlations and custom asset classes can be edited in the YAML directly.
       </p>
-      <table className="mini" style={{ maxWidth: 420, opacity: tableIgnored ? 0.5 : 1 }}>
+      <table className="mini" style={{ maxWidth: 420 }}>
         <thead>
           <tr>
             <th>series</th>
-            <th>
+            <th style={{ opacity: meanApplies ? 1 : 0.45 }}>
               mean
               <InfoTip text="Average annual return, nominal (before inflation). The center of the bell curve each year's return is drawn from." />
             </th>
-            <th>
+            <th style={{ opacity: volApplies ? 1 : 0.45 }}>
               vol
               <InfoTip text="Volatility — the standard deviation of annual returns. Higher vol means wider swings up and down, so more uncertainty in the outcome." />
             </th>

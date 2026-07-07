@@ -14,8 +14,9 @@ market:
   #               crashes and booms are more extreme than the lognormal allows
   #   bootstrap   resample multi-year blocks of actual 1928+ US history, keeping
   #               fat tails AND sequence risk. The mean/vol/correlation settings
-  #               below are IGNORED in this mode. Consider simulation.n_sims of
-  #               25000+ for smoother tails.
+  #               below are IGNORED in this mode (raw history reflects its own,
+  #               richer means) unless bootstrap.recenter is on. Consider
+  #               simulation.n_sims of 25000+ for smoother tails.
   #   all         ensemble: run n_sims paths through EVERY model above and pool
   #               them, so results reflect all three models equally (3x the paths)
   method: parametric
@@ -23,6 +24,8 @@ market:
     df: 6  # degrees of freedom; lower = fatter tails (must be > 2)
   bootstrap:
     block_years: 5  # length (years) of history blocks resampled jointly
+    recenter: false  # shift history so each series' mean matches the configured
+                     # mean below, keeping historical vol/co-movement/sequence risk
     # data: my_returns.csv  # optional CSV: year,<one column per asset>,inflation
   asset_classes:
     stocks: {mean: 0.095, vol: 0.16}

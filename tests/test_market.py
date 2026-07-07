@@ -243,6 +243,52 @@ def test_bootstrap_block_longer_than_history_raises(tmp_path):
         generate_paths(market, 10, 5, np.random.default_rng(0))
 
 
+# --- bootstrap recenter ---------------------------------------------------
+
+# Bootstrap over the bundled dataset (real vols) so recentering only shifts
+# location; stocks/bonds/inflation all exist as columns in the packaged CSV.
+MARKET_BUNDLED = dataclasses.replace(MARKET, method="bootstrap", block_years=1)
+
+
+def test_bootstrap_recenter_matches_configured_log_mean():
+    market = dataclasses.replace(MARKET_BUNDLED, recenter=True)
+    asset_returns, inflation = generate_paths(market, 300_000, 1, np.random.default_rng(1))
+    for i, name in enumerate(["stocks", "bonds"]):
+        target = market.asset_classes[name].log_params()[0]
+        log_growth = np.log1p(asset_returns[:, 0, i])
+        assert abs(log_growth.mean() - target) < 0.005
+    infl_target = market.inflation.log_params()[0]
+    assert abs(np.log1p(inflation[:, 0]).mean() - infl_target) < 0.005
+
+
+def test_bootstrap_recenter_preserves_vol_and_comovement():
+    # Recentering is a pure per-series shift in log space, so with the same seed
+    # (same sampled rows) the log vols and cross-asset correlation are identical
+    # to the raw bootstrap to machine precision.
+    a_raw, _ = generate_paths(MARKET_BUNDLED, 200_000, 1, np.random.default_rng(2))
+    a_rc, _ = generate_paths(
+        dataclasses.replace(MARKET_BUNDLED, recenter=True), 200_000, 1, np.random.default_rng(2)
+    )
+    for i in range(2):
+        assert abs(np.log1p(a_raw[:, 0, i]).std() - np.log1p(a_rc[:, 0, i]).std()) < 1e-9
+    corr_raw = np.corrcoef(np.log1p(a_raw[:, 0, 0]), np.log1p(a_raw[:, 0, 1]))[0, 1]
+    corr_rc = np.corrcoef(np.log1p(a_rc[:, 0, 0]), np.log1p(a_rc[:, 0, 1]))[0, 1]
+    assert abs(corr_raw - corr_rc) < 1e-9
+
+
+def test_bootstrap_recenter_default_off_is_raw_history():
+    a_off, i_off = generate_paths(MARKET_BUNDLED, 50, 10, np.random.default_rng(7))
+    hist = _read_returns_csv(None)[1]
+    assert np.isin(a_off[:, :, 0], hist[:, 0]).all()  # untouched historical values
+
+
+def test_bootstrap_recenter_returns_never_below_minus_100_percent():
+    market = dataclasses.replace(MARKET_BUNDLED, recenter=True)
+    asset_returns, inflation = generate_paths(market, 5_000, 20, np.random.default_rng(3))
+    assert (asset_returns > -1.0).all()
+    assert (inflation > -1.0).all()
+
+
 # --- all (ensemble) mode --------------------------------------------------
 
 

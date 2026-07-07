@@ -235,14 +235,16 @@ def test_market_method_bootstrap(raw_config):
     assert config.market.method == "bootstrap"
     assert config.market.block_years == 5  # default from defaults.yaml
     assert config.market.data_path is None  # packaged dataset
+    assert config.market.recenter is False  # default from defaults.yaml
 
     raw_config["market"] = {
         "method": "bootstrap",
-        "bootstrap": {"block_years": 3, "data": "my_returns.csv"},
+        "bootstrap": {"block_years": 3, "data": "my_returns.csv", "recenter": True},
     }
     config = build_config(raw_config)
     assert config.market.block_years == 3
     assert config.market.data_path == "my_returns.csv"
+    assert config.market.recenter is True
 
 
 def test_market_method_all(raw_config):

@@ -127,11 +127,17 @@ classes plus their correlation pairs) under `market:` in your config.
   - `bootstrap` — resamples `market.bootstrap.block_years`-long (default 5)
     blocks of actual US history 1928–2025, whole years taken jointly, so fat
     tails, cross-correlations, *and* multi-year sequences (Depression, 1970s
-    stagflation, 2008) come straight from the record. Configured
-    mean/vol/correlations are ignored; consider `simulation.n_sims` of 25,000+
-    for smoother tails. Data: S&P 500 (incl. dividends), 10-year Treasury, and
-    3-month T-bill returns from A. Damodaran's NYU Stern dataset plus CPI-U
-    December-over-December inflation (FRED `CPIAUCNS`), bundled as
+    stagflation, 2008) come straight from the record. By default the configured
+    mean/vol/correlations are ignored and the raw historical means apply — which
+    are richer than the packaged defaults (~11.7% nominal stocks vs 9.5%), so
+    plain bootstrap runs skew more optimistic than the other models. Set
+    `market.bootstrap.recenter: true` to shift each series so its mean matches
+    the configured `market.*.mean` while keeping the historical volatility,
+    co-movement, and sequence risk — making the three models comparable on the
+    mean assumption (vols stay historical). Consider `simulation.n_sims` of
+    25,000+ for smoother tails. Data: S&P 500 (incl. dividends), 10-year
+    Treasury, and 3-month T-bill returns from A. Damodaran's NYU Stern dataset
+    plus CPI-U December-over-December inflation (FRED `CPIAUCNS`), bundled as
     `retirement_sim/historical_returns.csv` with provenance in its header —
     refresh by re-deriving those columns for new years. A custom dataset can be
     supplied via `market.bootstrap.data` (CSV: `year,<one column per configured

@@ -66,7 +66,7 @@ export interface SeriesParams {
 export interface MarketOverride {
   method?: string
   student_t?: { df?: number }
-  bootstrap?: { block_years?: number; data?: string }
+  bootstrap?: { block_years?: number; data?: string; recenter?: boolean }
   asset_classes?: Record<string, Partial<SeriesParams>>
   inflation?: Partial<SeriesParams>
   correlations?: Record<string, number>
@@ -110,7 +110,7 @@ export interface Schema {
   market_defaults: {
     method: string
     student_t: { df: number }
-    bootstrap: { block_years: number }
+    bootstrap: { block_years: number; recenter: boolean }
     asset_classes: Record<string, SeriesParams>
     inflation: SeriesParams
     correlations: Record<string, number>
