@@ -17,6 +17,36 @@ interface NumberFieldProps {
   min?: number
   placeholder?: string
   width?: number
+  /** Optional glossary text; shows an ⓘ tooltip next to the label. */
+  info?: string
+}
+
+// A small ⓘ affordance that reveals a definition on hover or keyboard focus.
+// Used to gloss jargon (PIA, FRA, COLA, bps, vol …) inline with the field it
+// labels, so the meaning is one hover away without cluttering the form.
+export function InfoTip({ text }: { text: string }) {
+  return (
+    <span className="infotip">
+      <span className="infotip-icon" tabIndex={0} role="img" aria-label={text}>
+        i
+      </span>
+      <span className="infotip-bubble" role="tooltip">
+        {text}
+      </span>
+    </span>
+  )
+}
+
+// Field label with an optional trailing info tooltip. Renders nothing when
+// there is no label, matching the previous `{label && <label>…}` behavior.
+function FieldLabel({ label, info }: { label?: string; info?: string }) {
+  if (!label) return null
+  return (
+    <label>
+      {label}
+      {info && <InfoTip text={info} />}
+    </label>
+  )
 }
 
 function toDisplay(value: number | undefined, percent: boolean): string {
@@ -156,6 +186,7 @@ export function NumberField({
   min,
   placeholder,
   width,
+  info,
 }: NumberFieldProps) {
   const sfx = suffix ?? (percent ? '%' : undefined)
   // Leave room on the right for the unit label, scaled to its length.
@@ -178,7 +209,7 @@ export function NumberField({
   )
   return (
     <div className="field" style={width ? { width, minWidth: width } : undefined}>
-      {label && <label>{label}</label>}
+      <FieldLabel label={label} info={info} />
       {sfx ? (
         <span className="suffix-wrap">
           {input}
@@ -213,13 +244,14 @@ interface SelectFieldProps {
   options: string[]
   onChange: (value: string) => void
   width?: number
+  info?: string
 }
 
-export function SelectField({ label, value, options, onChange, width }: SelectFieldProps) {
+export function SelectField({ label, value, options, onChange, width, info }: SelectFieldProps) {
   const known = options.includes(value) ? options : [value, ...options]
   return (
     <div className="field" style={width ? { width, minWidth: width } : undefined}>
-      {label && <label>{label}</label>}
+      <FieldLabel label={label} info={info} />
       <select value={value} onChange={(e) => onChange(e.target.value)}>
         {known.map((option) => (
           <option key={option} value={option}>
@@ -235,13 +267,17 @@ interface CheckFieldProps {
   label: string
   checked: boolean
   onChange: (checked: boolean) => void
+  info?: string
 }
 
-export function CheckField({ label, checked, onChange }: CheckFieldProps) {
+export function CheckField({ label, checked, onChange, info }: CheckFieldProps) {
   return (
     <div className="field checkbox">
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-      <label>{label}</label>
+      <label>
+        {label}
+        {info && <InfoTip text={info} />}
+      </label>
     </div>
   )
 }

@@ -330,6 +330,71 @@ section.card > p.hint {
   pointer-events: none;
 }
 
+/* Inline ⓘ glossary affordance next to a field label. The bubble opens on
+   hover or keyboard focus; the card doesn't clip overflow so it can extend
+   past the field's box. */
+.infotip {
+  position: relative;
+  display: inline-flex;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
+.infotip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 1px solid var(--ink-muted);
+  color: var(--ink-muted);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-weight: 700;
+  font-size: 10px;
+  line-height: 1;
+  cursor: help;
+  user-select: none;
+}
+
+.infotip-icon:hover,
+.infotip:focus-within .infotip-icon {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.infotip-bubble {
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  width: max-content;
+  max-width: 230px;
+  padding: 8px 10px;
+  background: var(--surface-raised);
+  border: 1px solid var(--grid);
+  border-radius: 8px;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
+  color: var(--ink-secondary);
+  font-size: 12px;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.45;
+  text-transform: none;
+  white-space: normal;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.1s ease;
+}
+
+.infotip-icon:hover + .infotip-bubble,
+.infotip:focus-within .infotip-bubble {
+  opacity: 1;
+  visibility: visible;
+}
+
 .field.checkbox {
   flex-direction: row;
   align-items: center;

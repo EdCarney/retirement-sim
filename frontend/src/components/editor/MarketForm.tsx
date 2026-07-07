@@ -1,5 +1,5 @@
 import type { MarketOverride, Schema } from '../../types'
-import { NumberField, SelectField } from './Fields'
+import { InfoTip, NumberField, SelectField } from './Fields'
 
 // One-line description per market.method, shown under the selector.
 const METHOD_HINTS: Record<string, string> = {
@@ -116,8 +116,14 @@ export function MarketForm({ market, schema, onChange, feeDragBps, onFeeChange }
         <thead>
           <tr>
             <th>series</th>
-            <th>mean</th>
-            <th>vol</th>
+            <th>
+              mean
+              <InfoTip text="Average annual return, nominal (before inflation). The center of the bell curve each year's return is drawn from." />
+            </th>
+            <th>
+              vol
+              <InfoTip text="Volatility — the standard deviation of annual returns. Higher vol means wider swings up and down, so more uncertainty in the outcome." />
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -134,6 +140,7 @@ export function MarketForm({ market, schema, onChange, feeDragBps, onFeeChange }
           min={0}
           placeholder="0"
           width={130}
+          info="bps — basis points, hundredths of a percent (100 bps = 1%). The annual expense ratio skimmed from every account's return."
         />
       </div>
       <p className="hint" style={{ marginTop: 0 }}>

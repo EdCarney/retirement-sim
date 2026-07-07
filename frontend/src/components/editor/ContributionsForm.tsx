@@ -8,6 +8,11 @@ interface Props {
   onChange: (contributions: Contribution[]) => void
 }
 
+const INDEX_INFO =
+  "When on, the contribution grows with each path's simulated inflation, so it keeps constant buying power. When off, it stays a fixed nominal dollar amount every year."
+const EXTRA_INCREASE_INFO =
+  'A real raise on top of inflation — e.g. 2% models a contribution that outpaces inflation by 2%/yr, as with career salary growth. Compounds annually.'
+
 function ChangeRow({
   change,
   onChange,
@@ -41,11 +46,13 @@ function ChangeRow({
         onChange={(v) => onChange({ ...change, extra_annual_increase: v })}
         percent
         width={120}
+        info={EXTRA_INCREASE_INFO}
       />
       <CheckField
         label="index to inflation"
         checked={change.index_to_inflation ?? true}
         onChange={(on) => onChange({ ...change, index_to_inflation: on })}
+        info={INDEX_INFO}
       />
       <button className="subtle" style={{ marginBottom: 6 }} onClick={onRemove}>
         ✕
@@ -113,11 +120,13 @@ export function ContributionsForm({ contributions, accountNames, onChange }: Pro
               onChange={(v) => update(i, { ...contribution, extra_annual_increase: v })}
               percent
               width={120}
+              info={EXTRA_INCREASE_INFO}
             />
             <CheckField
               label="index to inflation"
               checked={contribution.index_to_inflation ?? true}
               onChange={(on) => update(i, { ...contribution, index_to_inflation: on })}
+              info={INDEX_INFO}
             />
           </div>
           {(contribution.changes ?? []).map((change, k) => (

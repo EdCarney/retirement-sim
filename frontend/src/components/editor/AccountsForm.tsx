@@ -120,6 +120,7 @@ function AccountCard({
           options={['fixed', 'glide path']}
           onChange={(mode) => toggleMode(mode === 'glide path')}
           width={130}
+          info="Fixed keeps the same asset mix for life. A glide path shifts the mix between age points (e.g. stocks → bonds as you approach retirement), interpolating in between."
         />
       </div>
 
