@@ -1,5 +1,15 @@
 import type { MarketOverride, Schema } from '../../types'
-import { NumberField } from './Fields'
+import { NumberField, SelectField } from './Fields'
+
+// One-line description per market.method, shown under the selector.
+const METHOD_HINTS: Record<string, string> = {
+  parametric: 'Correlated lognormal draws from the means/vols below.',
+  student_t:
+    'Same means/vols below, but fat-tailed Student-t shocks: crashes and booms are more extreme, and assets crash together.',
+  bootstrap:
+    'Resamples multi-year blocks of actual 1928+ US history (sequence risk included). The means/vols below are ignored; consider 25,000+ simulations.',
+  all: 'Ensemble: runs the configured number of simulations through every model above and pools the results (3× the paths). The means/vols below apply to the parametric and student_t components.',
+}
 
 interface Props {
   market: MarketOverride | undefined
@@ -13,6 +23,16 @@ interface Props {
 // show the effective value and write an override only when it differs.
 export function MarketForm({ market, schema, onChange, feeDragBps, onFeeChange }: Props) {
   const defaults = schema.market_defaults
+
+  const method = market?.method ?? defaults.method
+  const setMethod = (value: string) => {
+    const next: MarketOverride = { ...market }
+    if (value === defaults.method) delete next.method
+    else next.method = value
+    onChange(Object.keys(next).length === 0 ? undefined : next)
+  }
+  // The mean/vol table drives the parametric and student_t models only.
+  const tableIgnored = method === 'bootstrap'
 
   const effective = (series: string, field: 'mean' | 'vol'): number => {
     const override =
@@ -72,12 +92,27 @@ export function MarketForm({ market, schema, onChange, feeDragBps, onFeeChange }
   return (
     <section className="card">
       <h3>Market assumptions</h3>
-      <p className="hint">
+      <div className="field-row">
+        <SelectField
+          label="return model"
+          value={method}
+          options={schema.market_methods}
+          onChange={setMethod}
+          width={190}
+        />
+        {market?.method !== undefined && (
+          <span style={{ color: 'var(--accent)', alignSelf: 'center' }} title="overrides the default">
+            •
+          </span>
+        )}
+      </div>
+      <p className="hint">{METHOD_HINTS[method] ?? ''}</p>
+      <p className="hint" style={{ opacity: tableIgnored ? 0.6 : 1 }}>
         Average annual return and volatility, nominal, per asset class. Values differing from the
         packaged defaults (marked •) are saved as overrides in this config's <code>market:</code>{' '}
         block; correlations and custom asset classes can be edited in the YAML directly.
       </p>
-      <table className="mini" style={{ maxWidth: 420 }}>
+      <table className="mini" style={{ maxWidth: 420, opacity: tableIgnored ? 0.5 : 1 }}>
         <thead>
           <tr>
             <th>series</th>

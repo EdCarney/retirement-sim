@@ -243,6 +243,34 @@ def test_bootstrap_block_longer_than_history_raises(tmp_path):
         generate_paths(market, 10, 5, np.random.default_rng(0))
 
 
+# --- all (ensemble) mode --------------------------------------------------
+
+
+def test_all_mode_pools_paths_from_every_model():
+    market = dataclasses.replace(MARKET, method="all")
+    asset_returns, inflation = generate_paths(market, 100, 10, np.random.default_rng(9))
+    assert asset_returns.shape == (300, 10, 2)  # n_sims per model, pooled
+    assert inflation.shape == (300, 10)
+
+    # The first n_sims paths are the parametric draws: the ensemble consumes
+    # the RNG in model order, starting from the same state.
+    parametric, _ = generate_paths(MARKET, 100, 10, np.random.default_rng(9))
+    np.testing.assert_array_equal(asset_returns[:100], parametric)
+
+    # The bootstrap third only contains historical values, i.e. each model
+    # really contributes its own paths.
+    hist_stocks = _read_returns_csv(None)[1][:, 0]
+    assert np.isin(asset_returns[200:, :, 0], hist_stocks).all()
+
+
+def test_all_mode_seed_reproducibility():
+    market = dataclasses.replace(MARKET, method="all")
+    a = generate_paths(market, 50, 10, np.random.default_rng(7))
+    b = generate_paths(market, 50, 10, np.random.default_rng(7))
+    np.testing.assert_array_equal(a[0], b[0])
+    np.testing.assert_array_equal(a[1], b[1])
+
+
 def test_bundled_csv_sanity():
     columns, values = _read_returns_csv(None)
     assert columns == ("stocks", "bonds", "cash", "inflation")

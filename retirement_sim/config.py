@@ -302,7 +302,8 @@ def _build_series(raw: Any, name: str) -> SeriesParams:
     return params
 
 
-_MARKET_METHODS = ("parametric", "student_t", "bootstrap")
+# `all` runs every concrete model and pools the paths (see market.generate_paths).
+MARKET_METHODS = ("parametric", "student_t", "bootstrap", "all")
 
 
 def _build_market(raw: dict) -> MarketConfig:
@@ -315,8 +316,8 @@ def _build_market(raw: dict) -> MarketConfig:
     if "inflation" in asset_classes:
         raise ConfigError("`inflation` is reserved; configure it under market.inflation")
     method = str(raw.get("method", "parametric"))
-    if method not in _MARKET_METHODS:
-        options = ", ".join(f"`{m}`" for m in _MARKET_METHODS)
+    if method not in MARKET_METHODS:
+        options = ", ".join(f"`{m}`" for m in MARKET_METHODS)
         raise ConfigError(f"market.method must be one of {options}")
     student_t = raw.get("student_t") or {}
     tail_df = float(student_t.get("df", 6.0))

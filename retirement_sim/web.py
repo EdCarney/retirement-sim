@@ -28,6 +28,7 @@ from .config import (
     ACCOUNT_TYPES,
     GOAL_RETIREMENT_INCOME,
     GOAL_TARGET_AMOUNT,
+    MARKET_METHODS,
     ConfigError,
     PlanConfig,
     _default_market,
@@ -186,6 +187,7 @@ def create_app(configs_dir: Path, frontend_dist: Path | None = None) -> FastAPI:
             "goal_bases": ["real", "nominal"],
             "chart_dollars": ["real", "nominal"],
             "asset_classes": list(defaults["asset_classes"]),
+            "market_methods": list(MARKET_METHODS),
             "market_defaults": defaults,
         }
 

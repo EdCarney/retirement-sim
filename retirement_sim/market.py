@@ -14,11 +14,16 @@ The `bootstrap` mode instead resamples multi-year blocks of actual historical
 returns and inflation (whole years taken jointly across series), so fat tails,
 cross correlations, and serial correlation / sequence risk come straight from
 history; the configured mean/vol/correlations are ignored.
+
+The `all` mode is a model ensemble: it draws n_sims paths from each of the
+three concrete models and pools them, so results reflect all models equally
+(and generate_paths returns 3 * n_sims paths).
 """
 
 from __future__ import annotations
 
 import csv
+import dataclasses
 import functools
 import importlib.resources
 import io
@@ -44,11 +49,26 @@ def generate_paths(
         asset_returns: shape (n_sims, n_years, n_assets), arithmetic returns.
         inflation: shape (n_sims, n_years), annual inflation rates.
     """
-    if market.method == "bootstrap":
-        paths = _bootstrap_paths(market, n_sims, n_years, rng)
-    else:
-        paths = _parametric_paths(market, n_sims, n_years, rng)
+    paths = _method_paths(market, n_sims, n_years, rng)
     return paths[..., :-1], paths[..., -1]
+
+
+def _method_paths(
+    market: MarketConfig, n_sims: int, n_years: int, rng: np.random.Generator
+) -> np.ndarray:
+    if market.method == "all":
+        # Ensemble: n_sims paths from every concrete model, pooled so each
+        # model carries equal weight in the combined distribution. Callers
+        # must size downstream arrays from the returned shape, not n_sims.
+        return np.concatenate(
+            [
+                _method_paths(dataclasses.replace(market, method=m), n_sims, n_years, rng)
+                for m in ("parametric", "student_t", "bootstrap")
+            ]
+        )
+    if market.method == "bootstrap":
+        return _bootstrap_paths(market, n_sims, n_years, rng)
+    return _parametric_paths(market, n_sims, n_years, rng)
 
 
 def _parametric_paths(

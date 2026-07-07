@@ -71,6 +71,9 @@ def run_simulation(
 
     rng = np.random.default_rng(seed)
     asset_returns, inflation = generate_paths(config.market, n_sims, n_years, rng)
+    # market.method `all` returns n_sims paths per model; size everything
+    # downstream from the actual path count.
+    n_sims = asset_returns.shape[0]
     asset_names = config.market.asset_names
     weights = [resolve_allocations(account, ages[:-1], asset_names) for account in config.accounts]
 
