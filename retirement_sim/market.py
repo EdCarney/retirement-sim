@@ -13,7 +13,12 @@ configured values).
 The `bootstrap` mode instead resamples multi-year blocks of actual historical
 returns and inflation (whole years taken jointly across series), so fat tails,
 cross correlations, and serial correlation / sequence risk come straight from
-history; the configured mean/vol/correlations are ignored.
+history; the configured mean/vol/correlations are ignored. With
+`bootstrap.recenter` on, each historical series is shifted in log space so its
+sample mean matches the configured arithmetic mean/vol (the same moment
+matching as the parametric model), while its historical volatility, co-movement,
+and sequence risk are preserved -- making the bootstrap comparable to the other
+models on the mean assumption without giving up historical dynamics.
 
 The `all` mode is a model ensemble: it draws n_sims paths from each of the
 three concrete models and pools them, so results reflect all models equally
@@ -108,6 +113,8 @@ def _bootstrap_paths(
     historical co-movement of assets and inflation within each year.
     """
     data = _historical_returns(market)
+    if market.recenter:
+        data = _recenter(data, market)
     n_hist = data.shape[0]
     block = market.block_years
     if block > n_hist:
@@ -119,6 +126,25 @@ def _bootstrap_paths(
     starts = rng.integers(0, n_hist, size=(n_sims, n_blocks))
     idx = (starts[:, :, None] + np.arange(block)) % n_hist
     return data[idx.reshape(n_sims, -1)[:, :n_years]]
+
+
+def _recenter(data: np.ndarray, market: MarketConfig) -> np.ndarray:
+    """Shift each historical series so its mean matches the configured mean.
+
+    Works in log(1 + r) space: subtract each series' historical mean log return
+    and add the log mean implied by the configured arithmetic mean/vol (the same
+    moment matching as SeriesParams.log_params), then map back to arithmetic
+    returns. The shift is a per-series constant, so it moves only the location --
+    historical volatility, cross-asset co-movement, and serial correlation
+    survive, and because a constant shift commutes with the block resampling the
+    sequence-risk structure is untouched. Working in log space also keeps
+    1 + r > 0. Columns are in `market.series_names` order, matching the
+    per-series log means below.
+    """
+    target = np.array([p.log_params()[0] for p in market._series_params()])
+    log_data = np.log1p(data)
+    shift = target - log_data.mean(axis=0)
+    return np.expm1(log_data + shift)
 
 
 def _historical_returns(market: MarketConfig) -> np.ndarray:

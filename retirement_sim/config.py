@@ -63,6 +63,10 @@ class MarketConfig:
     tail_df: float = 6.0
     block_years: int = 5
     data_path: str | None = None
+    # Bootstrap only: when True, each historical series is shifted in log space
+    # so its sample mean matches the configured arithmetic mean/vol, keeping the
+    # historical volatility, co-movement, and sequence risk (see market.py).
+    recenter: bool = False
 
     @property
     def asset_names(self) -> list[str]:
@@ -328,6 +332,7 @@ def _build_market(raw: dict) -> MarketConfig:
     if block_years < 1:
         raise ConfigError("market.bootstrap.block_years must be >= 1")
     data_path = None if bootstrap.get("data") is None else str(bootstrap["data"])
+    recenter = bool(bootstrap.get("recenter", False))
     return MarketConfig(
         asset_classes=asset_classes,
         inflation=_build_series(raw.get("inflation"), "inflation"),
@@ -336,6 +341,7 @@ def _build_market(raw: dict) -> MarketConfig:
         tail_df=tail_df,
         block_years=block_years,
         data_path=data_path,
+        recenter=recenter,
     )
 
 

@@ -139,6 +139,7 @@ def test_schema_endpoint(client):
     assert schema["market_methods"] == ["parametric", "student_t", "bootstrap", "all"]
     assert schema["market_defaults"]["method"] == "parametric"
     assert schema["market_defaults"]["inflation"]["mean"] == 0.025
+    assert schema["market_defaults"]["bootstrap"]["recenter"] is False
 
 
 def test_simulate_payload(client):
