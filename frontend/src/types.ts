@@ -87,11 +87,18 @@ export interface RawConfig {
   output?: Record<string, unknown>
 }
 
-// --- Session plans (browser-owned) ---
+// --- Auth ---
+
+export interface User {
+  id: number
+  username: string
+}
+
+// --- Plans (stored server-side, per user) ---
 
 // A plan the user is working on. Identity is the generated `id`, not the
-// display `name`: names are just labels and may collide or change. Persisted
-// to localStorage; never stored on the server.
+// display `name`: names are just labels and may collide or change. Owned by the
+// logged-in user and persisted server-side (see the plan CRUD API).
 export interface Plan {
   id: string
   name: string

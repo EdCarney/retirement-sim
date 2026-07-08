@@ -10,12 +10,14 @@ const SIDEBAR_KEY = 'sidebar'
 interface Props {
   plans: Plan[]
   selected: string | null
+  username: string
   onSelect: (id: string) => void
   onCreate: () => void
   onDuplicate: () => void
   onRename: () => void
   onDelete: () => void
   onUpload: () => void
+  onLogout: () => void
 }
 
 const GOAL_TAGS: Record<string, string> = {
@@ -26,12 +28,14 @@ const GOAL_TAGS: Record<string, string> = {
 export function ConfigList({
   plans,
   selected,
+  username,
   onSelect,
   onCreate,
   onDuplicate,
   onRename,
   onDelete,
   onUpload,
+  onLogout,
 }: Props) {
   const theme = useTheme()
   const [open, setOpen] = useState(() => localStorage.getItem(SIDEBAR_KEY) !== 'collapsed')
@@ -104,6 +108,9 @@ export function ConfigList({
         </button>
       </div>
       <span className="spacer" />
+      <button className="logout-btn" onClick={onLogout} title="Log out">
+        Log out ({username})
+      </button>
       <button
         className="theme-toggle"
         onClick={toggleTheme}

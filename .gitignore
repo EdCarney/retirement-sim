@@ -12,6 +12,9 @@ wheels/
 # Simulation output (charts)
 output/
 
+# Local SQLite database (user accounts + saved plans)
+.data/
+
 # Frontend
 frontend/node_modules/
 frontend/dist/

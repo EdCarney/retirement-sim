@@ -43,8 +43,26 @@ def example_income() -> dict:
 
 
 @pytest.fixture
-def client():
-    return TestClient(create_app())
+def client(tmp_path, monkeypatch):
+    # Endpoints are now auth-gated, so the shared client signs up (and stays
+    # logged in via its cookie jar) before exercising the simulation API.
+    monkeypatch.setenv("SIGNUP_CODE", "test-code")
+    monkeypatch.setenv("COOKIE_SECURE", "0")
+    c = TestClient(create_app(db_path=tmp_path / "app.db"))
+    resp = c.post(
+        "/api/auth/signup",
+        json={"username": "tester", "password": "password123", "invite_code": "test-code"},
+    )
+    assert resp.status_code == 200
+    return c
+
+
+def test_requires_auth(tmp_path):
+    # Without a session cookie, the simulation API is closed.
+    anon = TestClient(create_app(db_path=tmp_path / "app.db"))
+    assert anon.get("/api/schema").status_code == 401
+    assert anon.post("/api/validate", json={"person": {}}).status_code == 401
+    assert anon.post("/api/simulate", json={"config": {}}).status_code == 401
 
 
 def test_no_filesystem_crud_endpoints(client):

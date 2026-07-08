@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, ApiError } from './api'
+import { api, ApiError, setUnauthorizedHandler } from './api'
 import { ConfigList } from './components/ConfigList'
 import { AccountsForm } from './components/editor/AccountsForm'
 import { ContributionsForm } from './components/editor/ContributionsForm'
@@ -10,27 +10,56 @@ import { PersonForm } from './components/editor/PersonForm'
 import { SimulationForm } from './components/editor/SimulationForm'
 import { SocialSecurityForm } from './components/editor/SocialSecurityForm'
 import { YamlPreview } from './components/editor/YamlPreview'
+import { LoginScreen } from './components/LoginScreen'
 import { ResultsView } from './components/results/ResultsView'
 import {
   downloadFile,
-  loadPlans,
-  loadSelected,
+  loadSelectedId,
   localSerialize,
   newId,
   parseUpload,
-  savePlans,
+  saveSelectedId,
   templateConfig,
 } from './storage'
-import type { Plan, RawConfig, ResultsPayload, Schema } from './types'
+import type { Plan, RawConfig, ResultsPayload, Schema, User } from './types'
 
+// Top-level auth gate. The planner only mounts for a logged-in user, so its
+// hooks (schema fetch, plan load) never run for an anonymous visitor.
 export default function App() {
+  const [user, setUser] = useState<User | null | undefined>(undefined)
+
+  useEffect(() => {
+    // A 401 from any protected call (e.g. an expired session mid-use) drops us
+    // back to the login screen.
+    setUnauthorizedHandler(() => setUser(null))
+    api
+      .me()
+      .then(setUser)
+      .catch(() => setUser(null))
+    return () => setUnauthorizedHandler(null)
+  }, [])
+
+  if (user === undefined) {
+    return (
+      <div className="auth-screen">
+        <p className="empty-state">Connecting…</p>
+      </div>
+    )
+  }
+  if (user === null) return <LoginScreen onAuthed={setUser} />
+  return <Planner user={user} onLoggedOut={() => setUser(null)} />
+}
+
+function Planner({ user, onLoggedOut }: { user: User; onLoggedOut: () => void }) {
   const [schema, setSchema] = useState<Schema | null>(null)
-  const [plans, setPlans] = useState<Plan[]>(() => loadPlans())
-  const [selected, setSelected] = useState<string | null>(() => loadSelected())
+  const [plans, setPlans] = useState<Plan[]>([])
+  const [plansLoaded, setPlansLoaded] = useState(false)
+  const [selected, setSelected] = useState<string | null>(null)
   const [draft, setDraft] = useState<RawConfig | null>(null)
-  // "dirty" now means edited since the last download — the plan itself is
-  // always persisted to localStorage, so nothing is lost by switching plans.
+  // "dirty" means edited since the last *download* — plan edits are always
+  // persisted to the server, so nothing is lost by switching plans.
   const [dirty, setDirty] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [tab, setTab] = useState<'form' | 'yaml'>('form')
   const [validationError, setValidationError] = useState<string | null>(null)
   const [banner, setBanner] = useState<{ kind: 'error' | 'ok'; text: string } | null>(null)
@@ -48,13 +77,26 @@ export default function App() {
       .catch((error) => setBanner({ kind: 'error', text: `could not reach server: ${error.message}` }))
   }, [])
 
-  // Load the initially-selected plan's config into the editable draft once.
+  // Load this user's plans from the server once, and open the last-selected one.
   useEffect(() => {
-    const initial = plans.find((p) => p.id === selected) ?? plans[0]
-    if (initial) {
-      setSelected(initial.id)
-      setDraft(initial.config)
-    }
+    api
+      .listPlans()
+      .then((loaded) => {
+        setPlans(loaded)
+        const remembered = loadSelectedId()
+        const initial = loaded.find((p) => p.id === remembered) ?? loaded[0]
+        if (initial) {
+          setSelected(initial.id)
+          setDraft(initial.config)
+        }
+        setPlansLoaded(true)
+      })
+      .catch((error) => {
+        if (!(error instanceof ApiError && error.status === 401)) {
+          setBanner({ kind: 'error', text: `could not load your plans: ${error.message}` })
+        }
+        setPlansLoaded(true)
+      })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -72,19 +114,65 @@ export default function App() {
     return () => clearTimeout(validateTimer.current)
   }, [draft])
 
-  // Single writer for plan state: keep React state and localStorage in lockstep.
-  const persist = (nextPlans: Plan[], nextSelected: string | null) => {
-    setPlans(nextPlans)
-    setSelected(nextSelected)
-    savePlans(nextPlans, nextSelected)
+  // --- Debounced autosave to the server -------------------------------------
+  // Edits update React state immediately and schedule a PUT ~800ms later, so a
+  // burst of keystrokes is one request. The pending payload captures the plan
+  // id at schedule time, and is flushed on plan switch / unload so a fast
+  // switch never drops or misroutes the last edit.
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const pendingSave = useRef<{ id: string; name: string; config: RawConfig } | null>(null)
+
+  const doSave = async (payload: { id: string; name: string; config: RawConfig }) => {
+    setSaving(true)
+    try {
+      await api.updatePlan(payload.id, { name: payload.name, config: payload.config })
+    } catch (error) {
+      // A 401 already bounced us to login via the global handler; only surface
+      // genuine save failures.
+      if (!(error instanceof ApiError && error.status === 401)) {
+        setBanner({ kind: 'error', text: `could not save — ${(error as Error).message}` })
+      }
+    } finally {
+      setSaving(false)
+    }
   }
+
+  const flushSave = () => {
+    clearTimeout(saveTimer.current)
+    const payload = pendingSave.current
+    pendingSave.current = null
+    if (payload) void doSave(payload)
+  }
+
+  const cancelPendingSave = () => {
+    clearTimeout(saveTimer.current)
+    pendingSave.current = null
+  }
+
+  const scheduleSave = (id: string, name: string, config: RawConfig) => {
+    pendingSave.current = { id, name, config }
+    clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(flushSave, 800)
+  }
+
+  // Best-effort flush if the tab is closed with edits still pending.
+  useEffect(() => {
+    const onUnload = () => flushSave()
+    window.addEventListener('beforeunload', onUnload)
+    return () => {
+      window.removeEventListener('beforeunload', onUnload)
+      flushSave()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const selectPlan = (id: string) => {
     if (id === selected) return
     const plan = plans.find((p) => p.id === id)
     if (!plan) return
+    flushSave() // persist any pending edits to the plan we're leaving
     setSelected(id)
-    savePlans(plans, id)
+    saveSelectedId(id)
     setDraft(plan.config)
     setDirty(false)
     setResults(null)
@@ -96,26 +184,34 @@ export default function App() {
     setDirty(true)
     setBanner(null)
     if (selected) {
-      persist(
-        plans.map((p) => (p.id === selected ? { ...p, config: next } : p)),
-        selected,
-      )
+      const name = plans.find((p) => p.id === selected)?.name ?? selected
+      setPlans(plans.map((p) => (p.id === selected ? { ...p, config: next } : p)))
+      scheduleSave(selected, name, next)
     }
   }
 
-  const addPlan = (name: string, config: RawConfig) => {
-    const plan: Plan = { id: newId(), name, config }
-    persist([...plans, plan], plan.id)
-    setDraft(config)
-    setDirty(true)
-    setResults(null)
-    setBanner(null)
+  // Create a plan on the server, then open it. Shared by new / duplicate / upload.
+  const addPlan = async (name: string, config: RawConfig, opts?: { dirty?: boolean }) => {
+    flushSave() // don't lose pending edits on the plan we're leaving
+    try {
+      const created = await api.createPlan({ id: newId(), name, config })
+      setPlans((prev) => [...prev, created])
+      setSelected(created.id)
+      saveSelectedId(created.id)
+      setDraft(created.config)
+      setDirty(opts?.dirty ?? true)
+      setResults(null)
+      return created
+    } catch (error) {
+      setBanner({ kind: 'error', text: `could not create plan — ${(error as Error).message}` })
+      return null
+    }
   }
 
   const create = () => {
     const name = window.prompt('Name for the new plan (e.g. my_plan):')
     if (!name) return
-    addPlan(name.replace(/\.yaml$/, ''), templateConfig())
+    void addPlan(name.replace(/\.yaml$/, ''), templateConfig())
   }
 
   const duplicate = () => {
@@ -124,28 +220,42 @@ export default function App() {
     const name = window.prompt('Name for the copy:', `${current.name}_copy`)
     if (!name) return
     // Deep clone so edits to the copy don't touch the original.
-    addPlan(name.replace(/\.yaml$/, ''), structuredClone(current.config))
+    void addPlan(name.replace(/\.yaml$/, ''), structuredClone(current.config))
   }
 
-  const rename = () => {
+  const rename = async () => {
     const current = plans.find((p) => p.id === selected)
     if (!current) return
     const name = window.prompt('New name for this plan:', current.name)
     if (!name || name === current.name) return
-    persist(
-      plans.map((p) => (p.id === current.id ? { ...p, name: name.replace(/\.yaml$/, '') } : p)),
-      selected,
-    )
+    const cleaned = name.replace(/\.yaml$/, '')
+    // This write carries the full plan, so drop any queued config save to avoid
+    // a stale-name write landing after it.
+    cancelPendingSave()
+    try {
+      const updated = await api.updatePlan(current.id, { name: cleaned, config: current.config })
+      setPlans(plans.map((p) => (p.id === current.id ? updated : p)))
+    } catch (error) {
+      setBanner({ kind: 'error', text: `could not rename — ${(error as Error).message}` })
+    }
   }
 
-  const remove = () => {
+  const remove = async () => {
     const current = plans.find((p) => p.id === selected)
     if (!current) return
-    if (!window.confirm(`Remove "${current.name}" from this browser? Download it first to keep a copy.`))
+    if (!window.confirm(`Delete "${current.name}"? This removes it from your account.`)) return
+    cancelPendingSave()
+    try {
+      await api.deletePlan(current.id)
+    } catch (error) {
+      setBanner({ kind: 'error', text: `could not delete — ${(error as Error).message}` })
       return
+    }
     const remaining = plans.filter((p) => p.id !== current.id)
     const nextSelected = remaining[0]?.id ?? null
-    persist(remaining, nextSelected)
+    setPlans(remaining)
+    setSelected(nextSelected)
+    saveSelectedId(nextSelected)
     setDraft(remaining.find((p) => p.id === nextSelected)?.config ?? null)
     setDirty(false)
     setResults(null)
@@ -162,12 +272,8 @@ export default function App() {
       const config = await parseUpload(file)
       const name = file.name.replace(/\.ya?ml$/i, '')
       // Uploaded plans start "clean": they already exist on the user's disk.
-      const plan: Plan = { id: newId(), name, config }
-      persist([...plans, plan], plan.id)
-      setDraft(config)
-      setDirty(false)
-      setResults(null)
-      setBanner({ kind: 'ok', text: `loaded ${file.name}` })
+      const created = await addPlan(name, config, { dirty: false })
+      if (created) setBanner({ kind: 'ok', text: `loaded ${file.name}` })
     } catch (error) {
       setBanner({ kind: 'error', text: `could not load file — ${(error as Error).message}` })
     }
@@ -202,6 +308,15 @@ export default function App() {
     }
   }
 
+  const logout = async () => {
+    flushSave()
+    try {
+      await api.logout()
+    } finally {
+      onLoggedOut()
+    }
+  }
+
   const currentName = plans.find((p) => p.id === selected)?.name ?? ''
   const accountNames = draft?.accounts.map((a) => a.name) ?? []
 
@@ -217,17 +332,19 @@ export default function App() {
       <ConfigList
         plans={plans}
         selected={selected}
+        username={user.username}
         onSelect={selectPlan}
         onCreate={create}
         onDuplicate={duplicate}
         onRename={rename}
         onDelete={remove}
         onUpload={upload}
+        onLogout={logout}
       />
       <main>
         {!draft || !schema ? (
           <div className="empty-state">
-            {schema
+            {schema && plansLoaded
               ? 'Create a new plan, or upload a plan YAML file to get started.'
               : 'Connecting to server…'}
           </div>
@@ -235,7 +352,11 @@ export default function App() {
           <>
             <div className="topbar">
               <h2>{currentName}</h2>
-              {dirty && <span className="dirty">not downloaded</span>}
+              {saving ? (
+                <span className="dirty">saving…</span>
+              ) : (
+                dirty && <span className="dirty">not downloaded</span>
+              )}
               <span className="spacer" />
               <button className="primary" onClick={download} disabled={validationError !== null}>
                 Download

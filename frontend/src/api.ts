@@ -1,4 +1,4 @@
-import type { MaxWithdrawal, RawConfig, ResultsPayload, Schema } from './types'
+import type { MaxWithdrawal, Plan, RawConfig, ResultsPayload, Schema, User } from './types'
 
 export class ApiError extends Error {
   status: number
@@ -9,9 +9,26 @@ export class ApiError extends Error {
   }
 }
 
+// Registered by App: called when a request to a protected endpoint 401s, so a
+// session that expires mid-use bounces the user back to the login screen. The
+// auth endpoints (/api/auth/*) are exempt — a failed login is handled locally
+// by the login screen, and the initial /api/auth/me probe drives the gate itself.
+let onUnauthorized: (() => void) | null = null
+
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  onUnauthorized = handler
+}
+
+function handleUnauthorized(url: string, status: number): void {
+  if (status === 401 && !url.startsWith('/api/auth/')) onUnauthorized?.()
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init)
+  // Send the session cookie with every call (same-origin in prod and via the
+  // Vite dev proxy, so this is same-origin either way).
+  const response = await fetch(url, { credentials: 'same-origin', ...init })
   if (!response.ok) {
+    handleUnauthorized(url, response.status)
     let detail = response.statusText
     try {
       const body = await response.json()
@@ -21,6 +38,8 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     }
     throw new ApiError(response.status, detail)
   }
+  // 204 No Content (e.g. DELETE) has no body to parse.
+  if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
 
@@ -49,11 +68,12 @@ export const api = {
     seed?: number,
     onProgress?: (fraction: number) => void,
   ): Promise<ResultsPayload> => {
-    const response = await fetch(
-      '/api/simulate',
-      json({ config, n_sims: nSims ?? null, seed: seed ?? null }),
-    )
+    const response = await fetch('/api/simulate', {
+      credentials: 'same-origin',
+      ...json({ config, n_sims: nSims ?? null, seed: seed ?? null }),
+    })
     if (!response.ok || !response.body) {
+      handleUnauthorized('/api/simulate', response.status)
       // An invalid config short-circuits to 422 before the stream opens.
       let detail = response.statusText
       try {
@@ -93,4 +113,40 @@ export const api = {
       '/api/max-withdrawal',
       json({ config, n_sims: nSims ?? null, seed: seed ?? null }),
     ),
+
+  // ── auth ──────────────────────────────────────────────────────────────────
+
+  // Whether the login screen should offer a signup tab.
+  authConfig: () => request<{ signup_enabled: boolean }>('/api/auth/config'),
+
+  // Current session's user, or throws ApiError(401) if not logged in.
+  me: () => request<{ user: User }>('/api/auth/me').then((r) => r.user),
+
+  login: (username: string, password: string) =>
+    request<{ user: User }>('/api/auth/login', json({ username, password })).then(
+      (r) => r.user,
+    ),
+
+  signup: (username: string, password: string, inviteCode: string) =>
+    request<{ user: User }>(
+      '/api/auth/signup',
+      json({ username, password, invite_code: inviteCode }),
+    ).then((r) => r.user),
+
+  logout: () => request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
+
+  // ── per-user plan storage ─────────────────────────────────────────────────
+
+  listPlans: () => request<Plan[]>('/api/plans'),
+
+  createPlan: (plan: Plan) => request<Plan>('/api/plans', json(plan)),
+
+  updatePlan: (id: string, body: { name: string; config: RawConfig }) =>
+    request<Plan>(`/api/plans/${encodeURIComponent(id)}`, {
+      ...json(body),
+      method: 'PUT',
+    }),
+
+  deletePlan: (id: string) =>
+    request<void>(`/api/plans/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }

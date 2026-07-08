@@ -50,16 +50,26 @@ uv run retirement-sim-web
 Options: `--port N` (default 8000), `--no-browser`. The server binds to
 127.0.0.1 only.
 
-Plans live **in your browser**, not on the server: the sidebar's plan list is
-persisted to `localStorage`, so your work survives a reload while the backend
-stays stateless (it only validates, serializes, and runs simulations — it never
-writes your financial data to disk). Create or **upload** a plan YAML file, edit
-it via forms (with a read-only YAML preview tab), **download** it to keep a copy
-on disk, and hit **Run simulation** for the success probability, percentile
-tables, and interactive versions of the three charts with a today's-dollars /
-nominal toggle. Downloaded files are byte-compatible with the CLI, so a plan
-saved from the browser runs unchanged via `retirement-sim my_plan.yaml`. The
-example files in `configs/` are a good starting point to upload.
+The app is gated behind a **username/password login**, and each user's plans are
+**stored server-side** (SQLite) so they follow you across devices. To run it
+locally you need to enable signup and allow the session cookie over plain HTTP:
+
+```bash
+COOKIE_SECURE=0 SIGNUP_CODE=letmein uv run retirement-sim-web
+```
+
+Then sign up with any username, password, and the invite code you set as
+`SIGNUP_CODE` (signup is disabled when that variable is unset). Once logged in:
+create or **upload** a plan YAML file, edit it via forms (with a read-only YAML
+preview tab) — edits **autosave** to your account — **download** a copy to disk,
+and hit **Run simulation** for the success probability, percentile tables, and
+interactive versions of the three charts with a today's-dollars / nominal toggle.
+Downloaded files are byte-compatible with the CLI, so a plan saved from the
+browser runs unchanged via `retirement-sim my_plan.yaml`. The example files in
+`configs/` are a good starting point to upload.
+
+The database lives at `$DATA_DIR/app.db` (default `.data/` in the repo; override
+with `DATA_DIR` or point `DB_PATH` straight at a file).
 
 For frontend development, `npm run dev` inside `frontend/` starts a Vite dev
 server with hot reload that proxies `/api` to the Python server.
@@ -68,15 +78,21 @@ server with hot reload that proxies `/api` to the Python server.
 
 The app ships as a single self-contained image: a multi-stage `Dockerfile`
 builds the React frontend and serves it, alongside the JSON API, from one
-stateless FastAPI process (no database, no volumes).
+FastAPI process. State is a single SQLite file under `$DATA_DIR` (default
+`/home/data` in the image) — mount a volume there to persist accounts across
+container restarts:
 
 ```bash
 docker build -t retirement-sim .
-docker run --rm -p 8000:8000 retirement-sim   # open http://localhost:8000
+docker run --rm -p 8000:8000 \
+  -e COOKIE_SECURE=0 -e SIGNUP_CODE=letmein \
+  -v "$PWD/data:/home/data" \
+  retirement-sim   # open http://localhost:8000
 ```
 
-The server binds `0.0.0.0` and listens on `$PORT` (default `8000`), so hosts
-that inject a port — e.g. Azure App Service — work without changes:
+Because it holds a single SQLite writer, run **one instance only** (do not scale
+out). The server binds `0.0.0.0` and listens on `$PORT` (default `8000`), so
+hosts that inject a port — e.g. Azure App Service — work without changes:
 
 ```bash
 docker run --rm -e PORT=9000 -p 9000:9000 retirement-sim
@@ -85,9 +101,11 @@ docker run --rm -e PORT=9000 -p 9000:9000 retirement-sim
 ### Deploying to Azure App Service
 
 The same image runs as a hosted service on **Azure App Service (Web App for
-Containers)**, gated behind login via built-in **Easy Auth**. App Service was
-chosen over Container Apps here for its one-click access control and always-on
-(no cold starts); both take the identical image, so switching later is cheap.
+Containers)**, gated behind the app's own **username/password login** with plans
+persisted per user. App Service was chosen over Container Apps here for its
+persistent `/home` storage and always-on (no cold starts); both take the
+identical image, so switching later is cheap. Azure **Easy Auth is not used** —
+the application is its own gate.
 
 `.github/workflows/deploy.yml` builds the image and pushes it to the GitHub
 Container Registry (GHCR, free) on every push to `main`; the deploy step is
@@ -106,15 +124,27 @@ az webapp config appsettings set -g retirement-sim -n <APP_NAME> \
 ```
 
 Make the GHCR package **public** (Package settings → Change visibility) so App
-Service can pull it — the image is stateless and holds no secrets. To keep it
-private instead, set `DOCKER_REGISTRY_SERVER_URL/USERNAME/PASSWORD` app settings
-to a GHCR read token. Managed TLS is on by default at `https://<APP_NAME>.azurewebsites.net`.
+Service can pull it — the image holds no secrets or data (those live in app
+settings and the `/home` volume). To keep it private instead, set
+`DOCKER_REGISTRY_SERVER_URL/USERNAME/PASSWORD` app settings to a GHCR read token.
+Managed TLS is on by default at `https://<APP_NAME>.azurewebsites.net`.
 
-**2. Require login (Easy Auth).** In the portal: **Authentication → Add identity
-provider** (Microsoft and/or Google), set *Restrict access: Require
-authentication* and *Unauthenticated requests: HTTP 302 redirect to log in*.
-Under the provider, restrict the allowed accounts to your own so randoms can't
-reach `/api/simulate`.
+**2. Enable persistent storage and configure auth.** The SQLite database sits on
+the `/home` volume, which only persists when App Service storage is enabled, and
+the login gate needs an invite code:
+
+```bash
+az webapp config appsettings set -g retirement-sim -n <APP_NAME> --settings \
+  WEBSITES_ENABLE_APP_SERVICE_STORAGE=true \
+  DATA_DIR=/home/data \
+  COOKIE_SECURE=1 \
+  SIGNUP_CODE='<a-shared-secret>'
+```
+
+Then browse to the site, sign up once with `SIGNUP_CODE`, and share the code with
+anyone you want to have an account (or unset it afterward to close signup). Keep
+the plan to a **single instance** — one SQLite writer — so don't scale out.
+Because the app is its own auth gate, leave App Service **Authentication** off.
 
 **3. Wire up CI/CD.** Give the workflow permission to deploy:
 

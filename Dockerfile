@@ -21,7 +21,13 @@ ENV UV_COMPILE_BYTECODE=1 \
     PATH="/app/.venv/bin:$PATH" \
     MPLBACKEND=Agg \
     PYTHONUNBUFFERED=1 \
-    PORT=8000
+    PORT=8000 \
+    # SQLite lives on the persistent /home volume (App Service Files); this only
+    # survives restarts when WEBSITES_ENABLE_APP_SERVICE_STORAGE=true is set.
+    DATA_DIR=/home/data \
+    # App Service terminates TLS, so the session cookie must be Secure in prod.
+    # Local `docker run` over http should pass -e COOKIE_SECURE=0.
+    COOKIE_SECURE=1
 
 WORKDIR /app
 

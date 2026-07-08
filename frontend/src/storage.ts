@@ -1,14 +1,16 @@
-// Browser-owned plan storage.
+// Client-side plan helpers.
 //
-// The server holds no plan state (see retirement_sim/web.py): this module is
-// the source of truth for "which plans exist". Plans live in React state and
-// are mirrored to localStorage so work survives a reload. Nothing here talks
-// to the backend.
+// Plans themselves now live server-side, per user (see the plan CRUD API in
+// retirement_sim/web.py); App loads and mutates them through `api`. This module
+// keeps only the pure, browser-local helpers: the starter template, id
+// generation, YAML upload/download, and a UI-only memory of which plan was last
+// selected (an id, never plan data).
 
 import { dump, load } from 'js-yaml'
-import type { Plan, RawConfig } from './types'
+import type { RawConfig } from './types'
 
-const PLANS_KEY = 'retirement-sim.plans'
+// Which plan the user last had open — a convenience so a reload reopens it.
+// This is a UI preference (just an id), not plan storage.
 const SELECTED_KEY = 'retirement-sim.selected'
 
 // Reject anything much larger than a real plan so a huge/malformed upload
@@ -40,31 +42,17 @@ export function newId(): string {
   return crypto.randomUUID()
 }
 
-export function loadPlans(): Plan[] {
-  try {
-    const raw = localStorage.getItem(PLANS_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed.filter(
-      (p): p is Plan => p && typeof p.id === 'string' && typeof p.name === 'string' && !!p.config,
-    )
-  } catch {
-    return []
-  }
-}
-
-export function loadSelected(): string | null {
+export function loadSelectedId(): string | null {
   return localStorage.getItem(SELECTED_KEY)
 }
 
-export function savePlans(plans: Plan[], selected: string | null): void {
+export function saveSelectedId(selected: string | null): void {
   try {
-    localStorage.setItem(PLANS_KEY, JSON.stringify(plans))
     if (selected) localStorage.setItem(SELECTED_KEY, selected)
     else localStorage.removeItem(SELECTED_KEY)
   } catch {
-    // Storage full or unavailable (e.g. private mode): keep working in memory.
+    // Storage unavailable (e.g. private mode): selection just won't be
+    // remembered across reloads. Not worth surfacing.
   }
 }
 

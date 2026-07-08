@@ -1,11 +1,15 @@
-"""Web UI: a stateless FastAPI server wrapping the simulation engine.
+"""Web UI: a FastAPI server wrapping the simulation engine.
 
-Serves the built React app from ``frontend/dist`` and exposes a small JSON
-API for validating, serializing, and running plan configs. The server holds
-**no** plan state: the browser owns the list of plans (localStorage) and the
-user's disk owns the YAML files (upload / download). Every endpoint is a pure
-function of its request body, so nothing user-specific is ever written to the
-server's filesystem — a prerequisite for hosting this multi-tenant.
+Serves the built React app from ``frontend/dist`` and exposes a small JSON API
+for validating, serializing, and running plan configs, plus authentication and
+per-user plan storage.
+
+Accounts and their saved plans are persisted server-side in SQLite (see
+``retirement_sim.db``); everything except the auth endpoints and the static
+assets requires a valid session cookie. The simulation endpoints themselves stay
+pure functions of their request body — the simulation engine never touches the
+database — but the server is no longer stateless overall, and it must run as a
+**single instance** (one SQLite writer; see ``db``).
 
 Downloaded YAML stays CLI-compatible: ``/api/serialize`` is the single
 canonical writer, so a file saved from the UI runs unchanged via
@@ -18,6 +22,7 @@ import argparse
 import json
 import os
 import queue
+import sqlite3
 import threading
 from collections.abc import Iterator
 from pathlib import Path
@@ -26,11 +31,12 @@ from typing import Any
 import numpy as np
 import uvicorn
 import yaml
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import auth
 from .config import (
     ACCOUNT_TYPES,
     GOAL_RETIREMENT_INCOME,
@@ -41,6 +47,7 @@ from .config import (
     _default_market,
     build_config,
 )
+from .db import Database, default_db_path
 from .report import PERCENTILES, money
 from .results import SimulationResults
 from .simulate import run_simulation
@@ -51,6 +58,11 @@ from .withdrawal import scenario_withdrawals
 # event in a hosted deployment. The CLI is a trusted local caller and is not
 # clamped.
 MAX_N_SIMS = 150_000
+
+# Per-user storage limits. The size cap mirrors the frontend's MAX_UPLOAD_BYTES
+# so a plan that uploads also saves; the count cap bounds one account's rows.
+MAX_PLANS_PER_USER = 200
+MAX_CONFIG_BYTES = 1_000_000
 
 
 class SimulateRequest(BaseModel):
@@ -65,8 +77,34 @@ class MaxWithdrawalRequest(BaseModel):
     seed: int | None = None
 
 
-def create_app(frontend_dist: Path | None = None) -> FastAPI:
+class SignupRequest(BaseModel):
+    username: str
+    password: str
+    invite_code: str
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class PlanCreate(BaseModel):
+    id: str
+    name: str
+    config: dict[str, Any]
+
+
+class PlanUpdate(BaseModel):
+    name: str
+    config: dict[str, Any]
+
+
+def create_app(
+    frontend_dist: Path | None = None, db_path: Path | None = None
+) -> FastAPI:
     app = FastAPI(title="Retirement Monte Carlo Simulator", docs_url=None, redoc_url=None)
+    database = Database(db_path or default_db_path())
+    app.state.db = database
 
     def build_or_422(raw: Any) -> PlanConfig:
         if not isinstance(raw, dict):
@@ -76,8 +114,120 @@ def create_app(frontend_dist: Path | None = None) -> FastAPI:
         except ConfigError as exc:
             raise HTTPException(422, str(exc)) from None
 
+    def require_user(request: Request) -> sqlite3.Row:
+        """Dependency: resolve the caller's session cookie to a user, or 401.
+
+        Guards every non-auth ``/api`` endpoint. A missing, unknown, or expired
+        session all surface as 401 so the SPA can send the caller to log in.
+        """
+        token = request.cookies.get(auth.SESSION_COOKIE)
+        if not token:
+            raise HTTPException(401, "not authenticated")
+        user = database.get_session_user(auth.token_hash(token))
+        if user is None:
+            raise HTTPException(401, "session expired")
+        return user
+
+    def start_session(response: Response, user_id: int) -> None:
+        token = auth.new_session_token()
+        database.create_session(user_id, auth.token_hash(token), auth.session_expiry())
+        response.set_cookie(
+            auth.SESSION_COOKIE,
+            token,
+            max_age=int(auth.SESSION_TTL.total_seconds()),
+            httponly=True,
+            samesite="lax",
+            secure=auth.cookie_secure(),
+            path="/",
+        )
+
+    # ── auth ─────────────────────────────────────────────────────────────────
+
+    @app.get("/api/auth/config")
+    def auth_config() -> dict[str, Any]:
+        """Public: lets the login screen show/hide the signup tab."""
+        return {"signup_enabled": auth.signup_enabled()}
+
+    @app.post("/api/auth/signup")
+    def signup(req: SignupRequest, response: Response) -> dict[str, Any]:
+        if not auth.signup_enabled():
+            raise HTTPException(403, "signup is disabled")
+        if not auth.check_signup_code(req.invite_code):
+            raise HTTPException(403, "invalid invite code")
+        username = req.username.strip()
+        _validate_credentials(username, req.password)
+        try:
+            user = database.create_user(username, auth.hash_password(req.password))
+        except sqlite3.IntegrityError:
+            raise HTTPException(409, "username already taken") from None
+        start_session(response, user["id"])
+        return {"user": _user_public(user)}
+
+    @app.post("/api/auth/login")
+    def login(req: LoginRequest, response: Response) -> dict[str, Any]:
+        user = database.get_user_by_username(req.username.strip())
+        # One generic error for both unknown user and wrong password so the
+        # endpoint doesn't reveal which usernames exist.
+        if user is None or not auth.verify_password(req.password, user["password_hash"]):
+            raise HTTPException(401, "invalid username or password")
+        database.delete_expired_sessions()
+        start_session(response, user["id"])
+        return {"user": _user_public(user)}
+
+    @app.post("/api/auth/logout")
+    def logout(request: Request, response: Response) -> dict[str, Any]:
+        token = request.cookies.get(auth.SESSION_COOKIE)
+        if token:
+            database.delete_session(auth.token_hash(token))
+        response.delete_cookie(auth.SESSION_COOKIE, path="/")
+        return {"ok": True}
+
+    @app.get("/api/auth/me")
+    def me(user: sqlite3.Row = Depends(require_user)) -> dict[str, Any]:
+        return {"user": _user_public(user)}
+
+    # ── plan CRUD (per user) ─────────────────────────────────────────────────
+
+    @app.get("/api/plans")
+    def list_plans(user: sqlite3.Row = Depends(require_user)) -> list[dict[str, Any]]:
+        return [_plan_public(row) for row in database.list_plans(user["id"])]
+
+    @app.post("/api/plans", status_code=201)
+    def create_plan(
+        req: PlanCreate, user: sqlite3.Row = Depends(require_user)
+    ) -> dict[str, Any]:
+        if database.count_plans(user["id"]) >= MAX_PLANS_PER_USER:
+            raise HTTPException(409, f"plan limit reached ({MAX_PLANS_PER_USER})")
+        config_json = _config_json_or_413(req.config)
+        try:
+            database.create_plan(user["id"], req.id, req.name, config_json)
+        except sqlite3.IntegrityError:
+            raise HTTPException(409, "a plan with that id already exists") from None
+        return {"id": req.id, "name": req.name, "config": req.config}
+
+    @app.put("/api/plans/{plan_id}")
+    def update_plan(
+        plan_id: str, req: PlanUpdate, user: sqlite3.Row = Depends(require_user)
+    ) -> dict[str, Any]:
+        config_json = _config_json_or_413(req.config)
+        if not database.update_plan(user["id"], plan_id, req.name, config_json):
+            raise HTTPException(404, "no such plan")
+        return {"id": plan_id, "name": req.name, "config": req.config}
+
+    @app.delete("/api/plans/{plan_id}", status_code=204)
+    def delete_plan(
+        plan_id: str, user: sqlite3.Row = Depends(require_user)
+    ) -> Response:
+        if not database.delete_plan(user["id"], plan_id):
+            raise HTTPException(404, "no such plan")
+        return Response(status_code=204)
+
+    # ── simulation / schema (auth-gated, but pure functions of the body) ─────
+
     @app.post("/api/serialize")
-    def serialize(raw: dict[str, Any]) -> dict[str, Any]:
+    def serialize(
+        raw: dict[str, Any], _user: sqlite3.Row = Depends(require_user)
+    ) -> dict[str, Any]:
         """Canonical YAML for a plan, for download.
 
         This is the single serializer used everywhere a file is written, so a
@@ -89,7 +239,9 @@ def create_app(frontend_dist: Path | None = None) -> FastAPI:
         return {"yaml": text}
 
     @app.post("/api/validate")
-    def validate(raw: dict[str, Any]) -> dict[str, Any]:
+    def validate(
+        raw: dict[str, Any], _user: sqlite3.Row = Depends(require_user)
+    ) -> dict[str, Any]:
         try:
             build_or_422(raw)
         except HTTPException as exc:
@@ -97,7 +249,7 @@ def create_app(frontend_dist: Path | None = None) -> FastAPI:
         return {"valid": True, "error": None}
 
     @app.get("/api/schema")
-    def schema() -> dict[str, Any]:
+    def schema(_user: sqlite3.Row = Depends(require_user)) -> dict[str, Any]:
         defaults = _default_market()
         return {
             "account_types": sorted(ACCOUNT_TYPES),
@@ -110,7 +262,9 @@ def create_app(frontend_dist: Path | None = None) -> FastAPI:
         }
 
     @app.post("/api/simulate")
-    def simulate(request: SimulateRequest) -> StreamingResponse:
+    def simulate(
+        request: SimulateRequest, _user: sqlite3.Row = Depends(require_user)
+    ) -> StreamingResponse:
         """Run a simulation, streaming progress then the final result.
 
         The response is newline-delimited JSON (NDJSON): zero or more
@@ -129,7 +283,9 @@ def create_app(frontend_dist: Path | None = None) -> FastAPI:
         )
 
     @app.post("/api/max-withdrawal")
-    def max_withdrawal(request: MaxWithdrawalRequest) -> dict[str, Any] | None:
+    def max_withdrawal(
+        request: MaxWithdrawalRequest, _user: sqlite3.Row = Depends(require_user)
+    ) -> dict[str, Any] | None:
         config = build_or_422(request.config)
         n_sims = _clamp_n_sims(request.n_sims, config)
         results = run_simulation(config, n_sims=n_sims, seed=request.seed)
@@ -139,6 +295,36 @@ def create_app(frontend_dist: Path | None = None) -> FastAPI:
         app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
 
     return app
+
+
+def _user_public(row: sqlite3.Row) -> dict[str, Any]:
+    """The safe, client-facing view of a user row (never the password hash)."""
+    return {"id": row["id"], "username": row["username"]}
+
+
+def _plan_public(row: sqlite3.Row) -> dict[str, Any]:
+    """A stored plan row as the ``{id, name, config}`` shape the frontend uses."""
+    return {"id": row["id"], "name": row["name"], "config": json.loads(row["config"])}
+
+
+def _validate_credentials(username: str, password: str) -> None:
+    if not (auth.MIN_USERNAME_LEN <= len(username) <= auth.MAX_USERNAME_LEN):
+        raise HTTPException(
+            400,
+            f"username must be {auth.MIN_USERNAME_LEN}–{auth.MAX_USERNAME_LEN} characters",
+        )
+    if not (auth.MIN_PASSWORD_LEN <= len(password) <= auth.MAX_PASSWORD_LEN):
+        raise HTTPException(
+            400, f"password must be at least {auth.MIN_PASSWORD_LEN} characters"
+        )
+
+
+def _config_json_or_413(config: dict[str, Any]) -> str:
+    """Serialize a plan config to JSON, rejecting oversized payloads with 413."""
+    text = json.dumps(config)
+    if len(text.encode("utf-8")) > MAX_CONFIG_BYTES:
+        raise HTTPException(413, "config too large")
+    return text
 
 
 def results_payload(results: SimulationResults) -> dict[str, Any]:
