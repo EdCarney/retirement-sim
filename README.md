@@ -82,6 +82,51 @@ that inject a port — e.g. Azure App Service — work without changes:
 docker run --rm -e PORT=9000 -p 9000:9000 retirement-sim
 ```
 
+### Deploying to Azure App Service
+
+The same image runs as a hosted service on **Azure App Service (Web App for
+Containers)**, gated behind login via built-in **Easy Auth**. App Service was
+chosen over Container Apps here for its one-click access control and always-on
+(no cold starts); both take the identical image, so switching later is cheap.
+
+`.github/workflows/deploy.yml` builds the image and pushes it to the GitHub
+Container Registry (GHCR, free) on every push to `main`; the deploy step is
+dormant until the `AZURE_WEBAPP_NAME` repo variable is set. One-time setup:
+
+**1. Provision (Azure CLI).** B1 is ~$13/mo, always-on:
+
+```bash
+az group create -n retirement-sim -l eastus
+az appservice plan create -g retirement-sim -n rsim-plan --is-linux --sku B1
+az webapp create -g retirement-sim -p rsim-plan -n <APP_NAME> \
+  --deployment-container-image-name ghcr.io/edcarney/retirement-sim:latest
+# The container listens on 8000; tell App Service which port to route to.
+az webapp config appsettings set -g retirement-sim -n <APP_NAME> \
+  --settings WEBSITES_PORT=8000
+```
+
+Make the GHCR package **public** (Package settings → Change visibility) so App
+Service can pull it — the image is stateless and holds no secrets. To keep it
+private instead, set `DOCKER_REGISTRY_SERVER_URL/USERNAME/PASSWORD` app settings
+to a GHCR read token. Managed TLS is on by default at `https://<APP_NAME>.azurewebsites.net`.
+
+**2. Require login (Easy Auth).** In the portal: **Authentication → Add identity
+provider** (Microsoft and/or Google), set *Restrict access: Require
+authentication* and *Unauthenticated requests: HTTP 302 redirect to log in*.
+Under the provider, restrict the allowed accounts to your own so randoms can't
+reach `/api/simulate`.
+
+**3. Wire up CI/CD.** Give the workflow permission to deploy:
+
+```bash
+az webapp deployment list-publishing-profiles -g retirement-sim -n <APP_NAME> --xml
+```
+
+- Repo **variable** `AZURE_WEBAPP_NAME` = `<APP_NAME>` (enables the deploy job).
+- Repo **secret** `AZURE_WEBAPP_PUBLISH_PROFILE` = the XML from the command above.
+
+Pushing to `main` now builds, pushes, and deploys automatically.
+
 ## Configuration
 
 See `configs/example_income_goal.yaml` (fully commented) and
