@@ -1,4 +1,5 @@
 import type { MarketOverride, Schema } from '../../types'
+import { CollapsibleCard } from './CollapsibleCard'
 import { CheckField, InfoTip, NumberField, SelectField } from './Fields'
 
 // One-line description per market.method, shown under the selector. The
@@ -122,8 +123,7 @@ export function MarketForm({ market, schema, onChange, feeDragBps, onFeeChange }
   )
 
   return (
-    <section className="card">
-      <h3>Market assumptions</h3>
+    <CollapsibleCard id="market" title="Market assumptions">
       <div className="field-row">
         <SelectField
           label="return model"
@@ -194,6 +194,6 @@ export function MarketForm({ market, schema, onChange, feeDragBps, onFeeChange }
         Annual expense ratio applied to every account (100 bps = 1%/yr). Override it on an
         individual account with <code>fee_drag_bps</code> in the YAML.
       </p>
-    </section>
+    </CollapsibleCard>
   )
 }

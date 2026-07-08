@@ -60,8 +60,8 @@ def format_summary(results: SimulationResults) -> str:
             f"ages {person.retirement_age}-{person.death_age}")
     else:
         add(f"Goal: reach {money(goal.amount)} ({goal.basis} dollars) by age {person.retirement_age}")
-    if config.social_security is not None:
-        ss = config.social_security
+    if config.active_social_security is not None:
+        ss = config.active_social_security
         ss_line = f"Social Security: {money(ss.monthly_benefit_today)}/month (today's $) from age {ss.claiming_age}"
         if ss.pia_monthly is not None:
             ss_line += f" (from PIA {money(ss.pia_monthly)} at FRA {ss.full_retirement_age:g})"
@@ -256,7 +256,7 @@ def _event_markers(results: SimulationResults) -> list[tuple[int, str]]:
     markers = []
     if results.ages[0] < person.retirement_age < results.ages[-1]:
         markers.append((person.retirement_age, "retirement"))
-    ss = results.config.social_security
+    ss = results.config.active_social_security
     if ss is not None and results.ages[0] < ss.claiming_age < results.ages[-1]:
         markers.append((ss.claiming_age, "social security"))
     return markers

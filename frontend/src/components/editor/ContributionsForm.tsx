@@ -1,5 +1,6 @@
 import { money } from '../../format'
 import type { Contribution, ContributionChange } from '../../types'
+import { CollapsibleCard } from './CollapsibleCard'
 import { CheckField, NumberField, SelectField } from './Fields'
 
 interface Props {
@@ -74,13 +75,15 @@ export function ContributionsForm({ contributions, accountNames, onChange }: Pro
   const totalAnnual = contributions.reduce((sum, c) => sum + annual(c), 0)
 
   return (
-    <section className="card">
-      <div className="section-head">
-        <h3>Contributions</h3>
+    <CollapsibleCard
+      id="contributions"
+      title="Contributions"
+      extra={
         <span className="section-total">
           Total <strong>{money(totalAnnual)}</strong>/yr
         </span>
-      </div>
+      }
+    >
       <p className="hint">
         Annual amounts in today's dollars (multiply monthly figures by 12); they stop at
         retirement. Scheduled changes reset the amount from a future age — e.g. a CoastFI
@@ -180,6 +183,6 @@ export function ContributionsForm({ contributions, accountNames, onChange }: Pro
       >
         + add contribution
       </button>
-    </section>
+    </CollapsibleCard>
   )
 }

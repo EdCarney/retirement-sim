@@ -93,7 +93,7 @@ def run_simulation(
     account_history[:, 0] = balances
     cum_inflation_history[:, 0] = 1.0
 
-    ss = config.social_security
+    ss = config.active_social_security
     for t in range(n_years):
         age = person.current_age + t
 

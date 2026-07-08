@@ -54,3 +54,26 @@ def test_pia_claiming_age_out_of_range(raw_config):
     raw_config["social_security"] = {"pia_monthly": 2000, "claiming_age": 60}
     with pytest.raises(ConfigError, match="between 62 and 70"):
         build_config(raw_config)
+
+
+def test_enabled_defaults_true(raw_config):
+    raw_config["social_security"] = {"monthly_benefit_today": 2500, "claiming_age": 67}
+    config = build_config(raw_config)
+    assert config.social_security.enabled is True
+    # Active accessor returns the benefit when enabled.
+    assert config.active_social_security is config.social_security
+
+
+def test_disabled_retains_values_but_is_inactive(raw_config):
+    raw_config["social_security"] = {
+        "monthly_benefit_today": 2500,
+        "claiming_age": 67,
+        "enabled": False,
+    }
+    config = build_config(raw_config)
+    # The values are still parsed and kept, so the UI can toggle them back on...
+    assert config.social_security is not None
+    assert config.social_security.monthly_benefit_today == 2500
+    assert config.social_security.enabled is False
+    # ...but the plan runs as if there were no Social Security.
+    assert config.active_social_security is None

@@ -261,8 +261,8 @@ def results_payload(results: SimulationResults) -> dict[str, Any]:
         goal_text = f"reach {money(goal.amount)} ({goal.basis} dollars) by age {person.retirement_age}"
 
     markers = [{"age": person.retirement_age, "label": "retirement"}]
-    if config.social_security is not None:
-        ss = config.social_security
+    if config.active_social_security is not None:
+        ss = config.active_social_security
         if results.ages[0] < ss.claiming_age < results.ages[-1]:
             markers.append({"age": ss.claiming_age, "label": "social security"})
     markers = [m for m in markers if results.ages[0] < m["age"] < results.ages[-1]]

@@ -56,6 +56,9 @@ export interface SocialSecurity {
   // amount, applying SSA claiming-age factors.
   pia_monthly?: number
   full_retirement_age?: number
+  // When false, the values are retained but the plan runs as if there were no
+  // Social Security. Omitted (defaults true) when enabled, to keep YAML clean.
+  enabled?: boolean
 }
 
 export interface SeriesParams {

@@ -223,7 +223,13 @@ export default function App() {
                   accountNames={accountNames}
                   onChange={(contributions) => updateDraft({ ...draft, contributions })}
                 />
-                <GoalForm goal={draft.goal} schema={schema} onChange={(goal) => updateDraft({ ...draft, goal })} />
+                <GoalForm
+                  goal={draft.goal}
+                  person={draft.person}
+                  schema={schema}
+                  onChange={(goal) => updateDraft({ ...draft, goal })}
+                  onPersonChange={(person) => updateDraft({ ...draft, person })}
+                />
                 <SocialSecurityForm
                   socialSecurity={draft.social_security}
                   onChange={(social_security) => {

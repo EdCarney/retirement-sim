@@ -144,6 +144,19 @@ input[type='checkbox'] {
   accent-color: var(--accent);
 }
 
+input:disabled,
+select:disabled {
+  opacity: 0.55;
+  cursor: default;
+  color: var(--ink-muted);
+}
+
+/* Dim a field's label too when its control is disabled, so a greyed-out but
+   still-visible value (e.g. Social Security toggled off) reads as inactive. */
+.field:has(:disabled) label {
+  opacity: 0.55;
+}
+
 /* --- layout --- */
 
 .sidebar {
@@ -324,17 +337,51 @@ section.card > h3 {
   font-size: 14.5px;
 }
 
-.section-head {
+/* --- collapsible card header --- */
+
+.card-head {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 4px;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 6px;
 }
 
-.section-head h3 {
+.card-head h3 {
   margin: 0;
   font-size: 14.5px;
+}
+
+.card-head:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+
+.card-head .chevron {
+  color: var(--ink-muted);
+  font-size: 11px;
+  line-height: 1;
+  transform: translateY(-1px);
+  transition: transform 0.15s ease;
+}
+
+.card-head .chevron.collapsed {
+  transform: translateY(-1px) rotate(-90deg);
+}
+
+.card-head:hover .chevron {
+  color: var(--accent);
+}
+
+.card-head .card-head-extra {
+  margin-left: auto;
+}
+
+/* Space between the header and body only when expanded; a collapsed card is
+   just its header row inside the card padding. */
+.card-body {
+  margin-top: 12px;
 }
 
 .section-total {
@@ -348,7 +395,7 @@ section.card > h3 {
   font-weight: 600;
 }
 
-section.card > p.hint {
+.card p.hint {
   margin: 0 0 12px;
   color: var(--ink-muted);
   font-size: 12.5px;

@@ -1,4 +1,5 @@
 import type { SocialSecurity } from '../../types'
+import { CollapsibleCard } from './CollapsibleCard'
 import { CheckField, InfoTip, NumberField, SelectField } from './Fields'
 
 interface Props {
@@ -27,8 +28,27 @@ function benefitFactor(claimingAge: number, fra: number): number {
 }
 
 export function SocialSecurityForm({ socialSecurity, onChange }: Props) {
-  const enabled = socialSecurity !== undefined
-  const isPia = enabled && socialSecurity.pia_monthly !== undefined
+  // `present` means the config carries benefit values at all; `active` means
+  // they should affect the plan. Toggling off keeps the values (greyed) so the
+  // benefit can be switched back on without re-entering them.
+  const present = socialSecurity !== undefined
+  const active = present && socialSecurity.enabled !== false
+  const isPia = present && socialSecurity.pia_monthly !== undefined
+
+  const toggle = (on: boolean) => {
+    if (on) {
+      if (socialSecurity) {
+        // Re-enable in place. Omit `enabled` (defaults true) to keep YAML clean.
+        const next = { ...socialSecurity }
+        delete next.enabled
+        onChange(next)
+      } else {
+        onChange({ monthly_benefit_today: 2000, claiming_age: 67 })
+      }
+    } else if (socialSecurity) {
+      onChange({ ...socialSecurity, enabled: false })
+    }
+  }
 
   const setMode = (mode: string) => {
     if (!socialSecurity) return
@@ -55,24 +75,24 @@ export function SocialSecurityForm({ socialSecurity, onChange }: Props) {
       : undefined
 
   return (
-    <section className="card">
-      <h3>Social Security</h3>
+    <CollapsibleCard id="social-security" title="Social Security">
       <p className="hint">
         Optional. The benefit is COLA'd
         <InfoTip text="COLA — Cost-of-Living Adjustment: the annual inflation raise Social Security applies to benefits. Here each simulated path grows the benefit by its own simulated inflation." />{' '}
         along each path's simulated inflation and offsets withdrawals.
       </p>
       <div className="field-row">
-        <CheckField
-          label="model Social Security"
-          checked={enabled}
-          onChange={(on) =>
-            onChange(on ? { monthly_benefit_today: 2000, claiming_age: 67 } : undefined)
-          }
-        />
-        {enabled && (
+        <CheckField label="model Social Security" checked={active} onChange={toggle} />
+        {present && (
           <>
-            <SelectField label="benefit source" value={isPia ? PIA : DIRECT} options={MODES} onChange={setMode} width={180} />
+            <SelectField
+              label="benefit source"
+              value={isPia ? PIA : DIRECT}
+              options={MODES}
+              onChange={setMode}
+              width={180}
+              disabled={!active}
+            />
             {isPia ? (
               <>
                 <NumberField
@@ -82,6 +102,7 @@ export function SocialSecurityForm({ socialSecurity, onChange }: Props) {
                   suffix="$/mo"
                   group
                   min={0}
+                  disabled={!active}
                   info="PIA — Primary Insurance Amount: the monthly benefit you'd get if you claim exactly at your full retirement age. The SSA computes it from your 35 highest-earning years."
                 />
                 <NumberField
@@ -90,6 +111,7 @@ export function SocialSecurityForm({ socialSecurity, onChange }: Props) {
                   onChange={(v) => onChange({ ...socialSecurity, claiming_age: v ?? 0 })}
                   min={62}
                   step={1}
+                  disabled={!active}
                   info="The age you start taking Social Security (62–70). Claiming before your full retirement age permanently reduces the benefit; delaying past it earns credits up to age 70."
                 />
                 <NumberField
@@ -98,6 +120,7 @@ export function SocialSecurityForm({ socialSecurity, onChange }: Props) {
                   onChange={(v) => onChange({ ...socialSecurity, full_retirement_age: v ?? 67 })}
                   min={62}
                   step={1}
+                  disabled={!active}
                   info="FRA — Full Retirement Age: the age at which you receive 100% of your PIA. It's 67 for anyone born in 1960 or later."
                 />
               </>
@@ -110,12 +133,14 @@ export function SocialSecurityForm({ socialSecurity, onChange }: Props) {
                   suffix="$/mo"
                   group
                   min={0}
+                  disabled={!active}
                 />
                 <NumberField
                   label="claiming age"
                   value={socialSecurity.claiming_age}
                   onChange={(v) => onChange({ ...socialSecurity, claiming_age: v ?? 0 })}
                   min={0}
+                  disabled={!active}
                   info="The age you start taking Social Security. The benefit above is treated as the amount received at this age."
                 />
               </>
@@ -123,7 +148,7 @@ export function SocialSecurityForm({ socialSecurity, onChange }: Props) {
           </>
         )}
       </div>
-      {isPia && (
+      {active && isPia && (
         <p className="hint">
           {derived !== undefined && (socialSecurity.claiming_age < 62 || socialSecurity.claiming_age > 70)
             ? 'Claiming age must be 62–70 when estimating from PIA.'
@@ -132,6 +157,6 @@ export function SocialSecurityForm({ socialSecurity, onChange }: Props) {
               `(${Math.round(benefitFactor(socialSecurity.claiming_age, fra) * 100)}% of PIA).`}
         </p>
       )}
-    </section>
+    </CollapsibleCard>
   )
 }

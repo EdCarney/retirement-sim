@@ -1,5 +1,6 @@
 import { money } from '../../format'
 import type { Account, GlidePoint, Person, Schema } from '../../types'
+import { CollapsibleCard } from './CollapsibleCard'
 import { NumberField, SelectField, TextField } from './Fields'
 
 interface Props {
@@ -189,13 +190,15 @@ function AccountCard({
 export function AccountsForm({ accounts, person, schema, onChange }: Props) {
   const totalBalance = accounts.reduce((sum, a) => sum + (a.balance || 0), 0)
   return (
-    <section className="card">
-      <div className="section-head">
-        <h3>Accounts</h3>
+    <CollapsibleCard
+      id="accounts"
+      title="Accounts"
+      extra={
         <span className="section-total">
           Total balance <strong>{money(totalBalance)}</strong>
         </span>
-      </div>
+      }
+    >
       <p className="hint">
         Account types are labels only — taxes are not modeled. Each account has either a fixed
         allocation or a glide path interpolated between age points.
@@ -226,6 +229,6 @@ export function AccountsForm({ accounts, person, schema, onChange }: Props) {
       >
         + add account
       </button>
-    </section>
+    </CollapsibleCard>
   )
 }

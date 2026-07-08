@@ -19,6 +19,8 @@ interface NumberFieldProps {
   width?: number
   /** Optional glossary text; shows an ⓘ tooltip next to the label. */
   info?: string
+  /** Greys the field and blocks edits while keeping its value visible. */
+  disabled?: boolean
 }
 
 // A small ⓘ affordance that reveals a definition on hover or keyboard focus.
@@ -70,11 +72,13 @@ function GroupedInput({
   onChange,
   placeholder,
   style,
+  disabled,
 }: {
   value: number | undefined
   onChange: (value: number | undefined) => void
   placeholder?: string
   style?: CSSProperties
+  disabled?: boolean
 }) {
   const ref = useRef<HTMLInputElement>(null)
   const caret = useRef<number | null>(null)
@@ -119,6 +123,7 @@ function GroupedInput({
       value={display}
       placeholder={placeholder}
       style={style}
+      disabled={disabled}
       onChange={handleChange}
     />
   )
@@ -139,6 +144,7 @@ function PlainNumberInput({
   min,
   placeholder,
   style,
+  disabled,
 }: {
   value: number | undefined
   onChange: (value: number | undefined) => void
@@ -147,6 +153,7 @@ function PlainNumberInput({
   min?: number
   placeholder?: string
   style?: CSSProperties
+  disabled?: boolean
 }) {
   const [draft, setDraft] = useState<string | null>(null)
   const display = draft !== null ? draft : toDisplay(value, percent)
@@ -159,6 +166,7 @@ function PlainNumberInput({
       min={min}
       placeholder={placeholder}
       style={style}
+      disabled={disabled}
       onChange={(e) => {
         const text = e.target.value
         setDraft(text)
@@ -187,6 +195,7 @@ export function NumberField({
   placeholder,
   width,
   info,
+  disabled,
 }: NumberFieldProps) {
   const sfx = suffix ?? (percent ? '%' : undefined)
   // Leave room on the right for the unit label, scaled to its length.
@@ -195,7 +204,13 @@ export function NumberField({
     : undefined
 
   const input = group ? (
-    <GroupedInput value={value} onChange={onChange} placeholder={placeholder} style={inputStyle} />
+    <GroupedInput
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      style={inputStyle}
+      disabled={disabled}
+    />
   ) : (
     <PlainNumberInput
       value={value}
@@ -205,6 +220,7 @@ export function NumberField({
       min={min}
       placeholder={placeholder}
       style={inputStyle}
+      disabled={disabled}
     />
   )
   return (
@@ -245,14 +261,15 @@ interface SelectFieldProps {
   onChange: (value: string) => void
   width?: number
   info?: string
+  disabled?: boolean
 }
 
-export function SelectField({ label, value, options, onChange, width, info }: SelectFieldProps) {
+export function SelectField({ label, value, options, onChange, width, info, disabled }: SelectFieldProps) {
   const known = options.includes(value) ? options : [value, ...options]
   return (
     <div className="field" style={width ? { width, minWidth: width } : undefined}>
       <FieldLabel label={label} info={info} />
-      <select value={value} onChange={(e) => onChange(e.target.value)}>
+      <select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
         {known.map((option) => (
           <option key={option} value={option}>
             {option}
