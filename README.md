@@ -47,19 +47,85 @@ Then start the server (it opens a browser tab automatically):
 uv run retirement-sim-web
 ```
 
-Options: `--port N` (default 8000), `--configs-dir DIR` (default `configs`),
-`--no-browser`. The server binds to 127.0.0.1 only.
+Options: `--port N` (default 8000), `--no-browser`. The server binds to
+127.0.0.1 only.
 
-The UI edits the same YAML files in `configs/` that the CLI reads — create,
-duplicate, and delete them in the sidebar, edit via forms (with a read-only
-YAML preview tab), and hit **Run simulation** for the success probability,
-percentile tables, and interactive versions of the three charts with a
-today's-dollars / nominal toggle. Saving through the UI re-serializes the
-YAML, so hand-written comments in a config file are lost on the first save
-from the browser.
+Plans live **in your browser**, not on the server: the sidebar's plan list is
+persisted to `localStorage`, so your work survives a reload while the backend
+stays stateless (it only validates, serializes, and runs simulations — it never
+writes your financial data to disk). Create or **upload** a plan YAML file, edit
+it via forms (with a read-only YAML preview tab), **download** it to keep a copy
+on disk, and hit **Run simulation** for the success probability, percentile
+tables, and interactive versions of the three charts with a today's-dollars /
+nominal toggle. Downloaded files are byte-compatible with the CLI, so a plan
+saved from the browser runs unchanged via `retirement-sim my_plan.yaml`. The
+example files in `configs/` are a good starting point to upload.
 
 For frontend development, `npm run dev` inside `frontend/` starts a Vite dev
 server with hot reload that proxies `/api` to the Python server.
+
+### Running in a container
+
+The app ships as a single self-contained image: a multi-stage `Dockerfile`
+builds the React frontend and serves it, alongside the JSON API, from one
+stateless FastAPI process (no database, no volumes).
+
+```bash
+docker build -t retirement-sim .
+docker run --rm -p 8000:8000 retirement-sim   # open http://localhost:8000
+```
+
+The server binds `0.0.0.0` and listens on `$PORT` (default `8000`), so hosts
+that inject a port — e.g. Azure App Service — work without changes:
+
+```bash
+docker run --rm -e PORT=9000 -p 9000:9000 retirement-sim
+```
+
+### Deploying to Azure App Service
+
+The same image runs as a hosted service on **Azure App Service (Web App for
+Containers)**, gated behind login via built-in **Easy Auth**. App Service was
+chosen over Container Apps here for its one-click access control and always-on
+(no cold starts); both take the identical image, so switching later is cheap.
+
+`.github/workflows/deploy.yml` builds the image and pushes it to the GitHub
+Container Registry (GHCR, free) on every push to `main`; the deploy step is
+dormant until the `AZURE_WEBAPP_NAME` repo variable is set. One-time setup:
+
+**1. Provision (Azure CLI).** B1 is ~$13/mo, always-on:
+
+```bash
+az group create -n retirement-sim -l eastus
+az appservice plan create -g retirement-sim -n rsim-plan --is-linux --sku B1
+az webapp create -g retirement-sim -p rsim-plan -n <APP_NAME> \
+  --deployment-container-image-name ghcr.io/edcarney/retirement-sim:latest
+# The container listens on 8000; tell App Service which port to route to.
+az webapp config appsettings set -g retirement-sim -n <APP_NAME> \
+  --settings WEBSITES_PORT=8000
+```
+
+Make the GHCR package **public** (Package settings → Change visibility) so App
+Service can pull it — the image is stateless and holds no secrets. To keep it
+private instead, set `DOCKER_REGISTRY_SERVER_URL/USERNAME/PASSWORD` app settings
+to a GHCR read token. Managed TLS is on by default at `https://<APP_NAME>.azurewebsites.net`.
+
+**2. Require login (Easy Auth).** In the portal: **Authentication → Add identity
+provider** (Microsoft and/or Google), set *Restrict access: Require
+authentication* and *Unauthenticated requests: HTTP 302 redirect to log in*.
+Under the provider, restrict the allowed accounts to your own so randoms can't
+reach `/api/simulate`.
+
+**3. Wire up CI/CD.** Give the workflow permission to deploy:
+
+```bash
+az webapp deployment list-publishing-profiles -g retirement-sim -n <APP_NAME> --xml
+```
+
+- Repo **variable** `AZURE_WEBAPP_NAME` = `<APP_NAME>` (enables the deploy job).
+- Repo **secret** `AZURE_WEBAPP_PUBLISH_PROFILE` = the XML from the command above.
+
+Pushing to `main` now builds, pushes, and deploys automatically.
 
 ## Configuration
 
@@ -190,7 +256,7 @@ retirement_sim/
   simulate.py    vectorized Monte Carlo engine
   results.py     success probability, percentiles, depletion stats
   report.py      terminal summary and PNG charts
-  web.py         FastAPI server for the web UI (config CRUD + simulate API)
+  web.py         stateless FastAPI server for the web UI (validate/serialize/simulate)
 frontend/        React web UI (Vite + TypeScript + Recharts)
 configs/         example plan configs
 tests/           unit, statistical, and end-to-end tests

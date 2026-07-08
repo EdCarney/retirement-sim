@@ -1,0 +1,21 @@
+# Keep the build context small and reproducible: let the image rebuild deps and
+# the frontend from lockfiles rather than copying local artifacts.
+.git
+.venv
+frontend/node_modules
+frontend/dist
+__pycache__
+*.py[oc]
+*.egg-info
+.pytest_cache
+.playwright-mcp
+
+# Simulation output and local (non-example) plan configs — never bake user data
+# into the image.
+output/
+configs/*.yaml
+!configs/example_*.yaml
+
+# Dev-only tooling
+tests/
+.github/

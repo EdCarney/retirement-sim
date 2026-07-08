@@ -1,19 +1,21 @@
-"""Local web UI: a FastAPI server wrapping the simulation engine.
+"""Web UI: a stateless FastAPI server wrapping the simulation engine.
 
 Serves the built React app from ``frontend/dist`` and exposes a small JSON
-API for config file CRUD, validation, and running simulations. The YAML
-files in the configs directory remain the source of truth and stay
-CLI-compatible; saving through the API re-serializes them (hand-written
-comments are not preserved).
+API for validating, serializing, and running plan configs. The server holds
+**no** plan state: the browser owns the list of plans (localStorage) and the
+user's disk owns the YAML files (upload / download). Every endpoint is a pure
+function of its request body, so nothing user-specific is ever written to the
+server's filesystem — a prerequisite for hosting this multi-tenant.
+
+Downloaded YAML stays CLI-compatible: ``/api/serialize`` is the single
+canonical writer, so a file saved from the UI runs unchanged via
+``retirement-sim`` / ``load_config``.
 """
 
 from __future__ import annotations
 
 import argparse
-import re
-import threading
-import webbrowser
-from datetime import datetime, timezone
+import os
 from pathlib import Path
 from typing import Any
 
@@ -39,26 +41,11 @@ from .results import SimulationResults
 from .simulate import run_simulation
 from .withdrawal import scenario_withdrawals
 
-_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*\.yaml$")
-
-# Starter config for newly created files; must pass build_config.
-_TEMPLATE: dict[str, Any] = {
-    "person": {"current_age": 35, "retirement_age": 65, "death_age": 95},
-    "accounts": [
-        {
-            "name": "retirement",
-            "type": "401k",
-            "balance": 100_000,
-            "allocation": {"stocks": 0.80, "bonds": 0.20},
-        }
-    ],
-    "contributions": [
-        {"account": "retirement", "annual_amount": 10_000, "index_to_inflation": True}
-    ],
-    "goal": {"type": "retirement_income", "monthly_income_today": 5_000},
-    "simulation": {"n_sims": 10_000},
-    "output": {"dir": "output", "charts": True, "chart_dollars": "real"},
-}
+# Cap simulation size at the HTTP boundary: n_sims sets numpy array
+# dimensions, so an unbounded value from an untrusted caller is an OOM / cost
+# event in a hosted deployment. The CLI is a trusted local caller and is not
+# clamped.
+MAX_N_SIMS = 150_000
 
 
 class SimulateRequest(BaseModel):
@@ -73,14 +60,8 @@ class MaxWithdrawalRequest(BaseModel):
     seed: int | None = None
 
 
-def create_app(configs_dir: Path, frontend_dist: Path | None = None) -> FastAPI:
-    configs_dir = Path(configs_dir)
+def create_app(frontend_dist: Path | None = None) -> FastAPI:
     app = FastAPI(title="Retirement Monte Carlo Simulator", docs_url=None, redoc_url=None)
-
-    def config_path(name: str) -> Path:
-        if not _NAME_RE.fullmatch(name) or ".." in name:
-            raise HTTPException(400, f"invalid config name: {name!r} (want e.g. my_plan.yaml)")
-        return configs_dir / name
 
     def build_or_422(raw: Any) -> PlanConfig:
         if not isinstance(raw, dict):
@@ -90,92 +71,17 @@ def create_app(configs_dir: Path, frontend_dist: Path | None = None) -> FastAPI:
         except ConfigError as exc:
             raise HTTPException(422, str(exc)) from None
 
-    @app.get("/api/configs")
-    def list_configs() -> list[dict[str, Any]]:
-        entries = []
-        for path in sorted(configs_dir.glob("*.yaml")):
-            entry: dict[str, Any] = {
-                "name": path.name,
-                "modified": datetime.fromtimestamp(
-                    path.stat().st_mtime, tz=timezone.utc
-                ).isoformat(),
-                "goal_type": None,
-                "error": None,
-            }
-            try:
-                raw = yaml.safe_load(path.read_text())
-                entry["goal_type"] = (raw.get("goal") or {}).get("type")
-                build_config(raw)
-            except (yaml.YAMLError, ConfigError, AttributeError) as exc:
-                entry["error"] = str(exc)
-            entries.append(entry)
-        return entries
+    @app.post("/api/serialize")
+    def serialize(raw: dict[str, Any]) -> dict[str, Any]:
+        """Canonical YAML for a plan, for download.
 
-    @app.get("/api/configs/{name}")
-    def get_config(name: str) -> dict[str, Any]:
-        path = config_path(name)
-        try:
-            text = path.read_text()
-        except FileNotFoundError:
-            raise HTTPException(404, f"no such config: {name}") from None
-        try:
-            raw = yaml.safe_load(text)
-        except yaml.YAMLError as exc:
-            raise HTTPException(422, f"could not parse {name}: {exc}") from None
-        error = None
-        try:
-            build_config(raw)
-        except ConfigError as exc:
-            error = str(exc)
-        return {"name": name, "config": raw, "yaml": text, "error": error}
-
-    @app.put("/api/configs/{name}")
-    def save_config(name: str, raw: dict[str, Any]) -> dict[str, Any]:
-        path = config_path(name)
-        build_or_422(raw)
+        This is the single serializer used everywhere a file is written, so a
+        downloaded plan byte-matches what the CLI reads back. The config need
+        not be valid (a work-in-progress is still serializable); callers that
+        want validity should hit ``/api/validate`` first.
+        """
         text = yaml.safe_dump(raw, sort_keys=False, allow_unicode=True)
-        configs_dir.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
-        return {"name": name, "yaml": text}
-
-    @app.post("/api/configs/{name}", status_code=201)
-    def create_config(name: str, copy_from: str | None = None) -> dict[str, Any]:
-        path = config_path(name)
-        if path.exists():
-            raise HTTPException(409, f"{name} already exists")
-        if copy_from is not None:
-            source = config_path(copy_from)
-            if not source.exists():
-                raise HTTPException(404, f"no such config: {copy_from}")
-            raw = yaml.safe_load(source.read_text())
-        else:
-            raw = _TEMPLATE
-        text = yaml.safe_dump(raw, sort_keys=False, allow_unicode=True)
-        configs_dir.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
-        return {"name": name, "config": raw, "yaml": text, "error": None}
-
-    @app.post("/api/configs/{name}/rename")
-    def rename_config(name: str, to: str) -> dict[str, Any]:
-        source = config_path(name)
-        target = config_path(to)
-        if not source.exists():
-            raise HTTPException(404, f"no such config: {name}")
-        if target == source:
-            return {"name": to}
-        if target.exists():
-            raise HTTPException(409, f"{to} already exists")
-        source.rename(target)
-        return {"name": to}
-
-    @app.delete("/api/configs/{name}")
-    def delete_config(name: str) -> dict[str, Any]:
-        path = config_path(name)
-        try:
-            path.unlink()
-        except FileNotFoundError:
-            raise HTTPException(404, f"no such config: {name}") from None
-        return {"deleted": name}
+        return {"yaml": text}
 
     @app.post("/api/validate")
     def validate(raw: dict[str, Any]) -> dict[str, Any]:
@@ -201,13 +107,15 @@ def create_app(configs_dir: Path, frontend_dist: Path | None = None) -> FastAPI:
     @app.post("/api/simulate")
     def simulate(request: SimulateRequest) -> dict[str, Any]:
         config = build_or_422(request.config)
-        results = run_simulation(config, n_sims=request.n_sims, seed=request.seed)
+        n_sims = _clamp_n_sims(request.n_sims, config)
+        results = run_simulation(config, n_sims=n_sims, seed=request.seed)
         return results_payload(results)
 
     @app.post("/api/max-withdrawal")
     def max_withdrawal(request: MaxWithdrawalRequest) -> dict[str, Any] | None:
         config = build_or_422(request.config)
-        results = run_simulation(config, n_sims=request.n_sims, seed=request.seed)
+        n_sims = _clamp_n_sims(request.n_sims, config)
+        results = run_simulation(config, n_sims=n_sims, seed=request.seed)
         return scenario_withdrawals(results)
 
     if frontend_dist is not None and frontend_dist.is_dir():
@@ -329,6 +237,16 @@ def results_payload(results: SimulationResults) -> dict[str, Any]:
     }
 
 
+def _clamp_n_sims(override: int | None, config: PlanConfig) -> int:
+    """Effective n_sims for a request, capped at ``MAX_N_SIMS``.
+
+    Mirrors ``run_simulation``'s fallback (override, else the config's value)
+    so the cap applies no matter which path a caller uses to inflate it.
+    """
+    n_sims = override if override is not None else config.simulation.n_sims
+    return max(1, min(n_sims, MAX_N_SIMS))
+
+
 def _round_list(values: np.ndarray) -> list[float]:
     return [round(float(v), 2) for v in values]
 
@@ -339,12 +257,21 @@ def _default_frontend_dist() -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="retirement-sim-web", description="Local web UI for the retirement simulator."
+        prog="retirement-sim-web", description="Web server for the retirement simulator."
     )
-    parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument("--configs-dir", default="configs", help="directory of plan YAML files")
-    parser.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
+    parser.add_argument(
+        "--host", default="0.0.0.0", help="interface to bind (default: all)"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="port to bind (default: $PORT, else 8000)",
+    )
     args = parser.parse_args(argv)
+
+    # App Service (and most container platforms) inject the port via $PORT.
+    port = args.port if args.port is not None else int(os.environ.get("PORT", "8000"))
 
     frontend_dist = _default_frontend_dist()
     if not frontend_dist.is_dir():
@@ -354,12 +281,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         frontend_dist = None
 
-    app = create_app(Path(args.configs_dir), frontend_dist)
-    url = f"http://127.0.0.1:{args.port}"
-    print(f"Serving on {url} (configs dir: {args.configs_dir})")
-    if not args.no_browser:
-        threading.Timer(0.8, webbrowser.open, [url]).start()
-    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
+    app = create_app(frontend_dist)
+    print(f"Serving on http://{args.host}:{port}")
+    # log_level="warning" keeps request bodies (which carry plan data) out of
+    # the logs — see the privacy note in the module docstring.
+    uvicorn.run(app, host=args.host, port=port, log_level="warning")
     return 0
 
 
