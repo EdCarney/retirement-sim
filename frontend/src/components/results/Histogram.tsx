@@ -9,7 +9,7 @@ import {
   YAxis,
 } from 'recharts'
 import { compactMoney } from '../../format'
-import { BASELINE, FAILURE, GRID, INK_MUTED, MEDIAN } from '../../palette'
+import { usePalette } from '../../palette'
 import type { HistogramData } from '../../types'
 
 interface Props {
@@ -39,6 +39,7 @@ function HistTooltip({ active, payload }: any) {
 }
 
 export function Histogram({ histogram, nSims }: Props) {
+  const palette = usePalette()
   const { bin_edges, counts, n_failed, n_clipped, clip, median } = histogram
   const bins: Bin[] = counts.map((count, i) => ({
     label: compactMoney(bin_edges[i]),
@@ -55,24 +56,24 @@ export function Histogram({ histogram, nSims }: Props) {
     <>
       <ResponsiveContainer width="100%" height={300}>
         <BarChart data={bins} margin={{ top: 8, right: 12, left: 8, bottom: 0 }} barCategoryGap={1}>
-          <CartesianGrid vertical={false} stroke={GRID} />
+          <CartesianGrid vertical={false} stroke={palette.grid} />
           <XAxis
             dataKey="label"
             interval={interval}
-            tick={{ fill: INK_MUTED, fontSize: 11 }}
+            tick={{ fill: palette.inkMuted, fontSize: 11 }}
             tickLine={false}
-            axisLine={{ stroke: BASELINE }}
+            axisLine={{ stroke: palette.baseline }}
           />
           <YAxis
-            tick={{ fill: INK_MUTED, fontSize: 11 }}
+            tick={{ fill: palette.inkMuted, fontSize: 11 }}
             tickLine={false}
             axisLine={false}
             width={50}
           />
-          <Tooltip content={<HistTooltip />} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
+          <Tooltip content={<HistTooltip />} cursor={{ fill: palette.hoverVeil }} />
           <Bar dataKey="count" isAnimationActive={false}>
             {bins.map((bin, i) => (
-              <Cell key={i} fill={bin.depleted ? FAILURE : MEDIAN} />
+              <Cell key={i} fill={bin.depleted ? palette.failure : palette.median} />
             ))}
           </Bar>
         </BarChart>
@@ -82,7 +83,7 @@ export function Histogram({ histogram, nSims }: Props) {
         {n_failed > 0 && (
           <>
             {' · '}
-            <span style={{ color: FAILURE }}>
+            <span style={{ color: palette.failure }}>
               {n_failed.toLocaleString('en-US')} of {nSims.toLocaleString('en-US')} paths depleted
               (red)
             </span>

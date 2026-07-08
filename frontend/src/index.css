@@ -1,4 +1,44 @@
+/* Dark is the default theme (bare :root); the light theme below overrides it
+   when <html data-theme="light">. Chart tokens (--chart-*) are read back out
+   via getComputedStyle by palette.ts, since Recharts paints from JS not CSS. */
 :root {
+  color-scheme: dark;
+
+  --surface: #16161a;
+  --surface-raised: #1e1e23;
+  --ink: #ececef;
+  --ink-secondary: #b4b3bb;
+  --ink-muted: #7c7b85;
+  --grid: #2d2d34;
+  --baseline: #45444e;
+  --accent: #4f9bee;
+  --accent-hover: #6fb0f5;
+  --accent-soft: #22344e;
+  --failure: #e8635e;
+  --failure-soft: #37201f;
+  --on-failure-soft: #f0a8a4;
+  --ok: #4fb07d;
+  --ok-soft: #182f1f;
+  --hover-veil: rgba(255, 255, 255, 0.05);
+  --shadow: rgba(0, 0, 0, 0.4);
+
+  --chart-band-outer: #223650;
+  --chart-band-inner: #315a86;
+  --chart-median: #5aa2f0;
+  --chart-failure: #e8635e;
+  --chart-scenario-10: #3d6091;
+  --chart-scenario-25: #4f88cd;
+  --chart-scenario-50: #6bb0f5;
+
+  font-family: 'Avenir Next', Avenir, 'Segoe UI', system-ui, -apple-system, sans-serif;
+  color: var(--ink);
+  background: var(--surface);
+  font-size: 15px;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
   --surface: #fcfcfb;
   --surface-raised: #ffffff;
   --ink: #0b0b0b;
@@ -7,16 +47,23 @@
   --grid: #e1e0d9;
   --baseline: #c3c2b7;
   --accent: #2a78d6;
+  --accent-hover: #2264b5;
   --accent-soft: #cde2fb;
   --failure: #d03b3b;
   --failure-soft: #fbe4e4;
+  --on-failure-soft: #8c2323;
   --ok: #2e7d4f;
   --ok-soft: #e0f0e6;
+  --hover-veil: rgba(0, 0, 0, 0.04);
+  --shadow: rgba(0, 0, 0, 0.12);
 
-  font-family: 'Avenir Next', Avenir, 'Segoe UI', system-ui, -apple-system, sans-serif;
-  color: var(--ink);
-  background: var(--surface);
-  font-size: 15px;
+  --chart-band-outer: #cde2fb;
+  --chart-band-inner: #9ec5f4;
+  --chart-median: #2a78d6;
+  --chart-failure: #d03b3b;
+  --chart-scenario-10: #86b6ef;
+  --chart-scenario-25: #5598e7;
+  --chart-scenario-50: #2a78d6;
 }
 
 * {
@@ -60,7 +107,7 @@ button.primary {
 }
 
 button.primary:hover:not(:disabled) {
-  background: #2264b5;
+  background: var(--accent-hover);
   color: #fff;
 }
 
@@ -170,6 +217,30 @@ input[type='checkbox'] {
   padding: 5px 0;
 }
 
+.sidebar .spacer {
+  flex: 1;
+}
+
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--ink-secondary);
+}
+
+.theme-toggle:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.theme-toggle .icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
 main {
   flex: 1;
   min-width: 0;
@@ -230,7 +301,7 @@ main {
 
 .banner.error {
   background: var(--failure-soft);
-  color: #8c2323;
+  color: var(--on-failure-soft);
 }
 
 .banner.ok {
@@ -376,7 +447,7 @@ section.card > p.hint {
   background: var(--surface-raised);
   border: 1px solid var(--grid);
   border-radius: 8px;
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 3px 12px var(--shadow);
   color: var(--ink-secondary);
   font-size: 12px;
   font-weight: 400;
@@ -609,7 +680,7 @@ pre.yaml {
   border-radius: 8px;
   padding: 8px 12px;
   font-size: 12.5px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07);
+  box-shadow: 0 2px 8px var(--shadow);
 }
 
 .tooltip-box .tt-title {

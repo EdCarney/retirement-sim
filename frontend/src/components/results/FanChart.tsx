@@ -10,7 +10,7 @@ import {
   YAxis,
 } from 'recharts'
 import { compactMoney, money } from '../../format'
-import { BAND_INNER, BAND_OUTER, BASELINE, GRID, INK_MUTED, MEDIAN } from '../../palette'
+import { usePalette } from '../../palette'
 import type { Bands, Marker } from '../../types'
 
 interface Props {
@@ -44,6 +44,7 @@ function FanTooltip({ active, payload, label }: any) {
 }
 
 export function FanChart({ ages, bands, markers }: Props) {
+  const palette = usePalette()
   const data = ages.map((age, i) => ({
     age,
     p10: bands.p10[i],
@@ -57,33 +58,33 @@ export function FanChart({ ages, bands, markers }: Props) {
   return (
     <ResponsiveContainer width="100%" height={340}>
       <ComposedChart data={data} margin={{ top: 18, right: 12, left: 8, bottom: 0 }}>
-        <CartesianGrid vertical={false} stroke={GRID} />
+        <CartesianGrid vertical={false} stroke={palette.grid} />
         <XAxis
           dataKey="age"
           type="number"
           domain={['dataMin', 'dataMax']}
           tickCount={10}
-          tick={{ fill: INK_MUTED, fontSize: 11 }}
+          tick={{ fill: palette.inkMuted, fontSize: 11 }}
           tickLine={false}
-          axisLine={{ stroke: BASELINE }}
+          axisLine={{ stroke: palette.baseline }}
         />
         <YAxis
           tickFormatter={compactMoney}
-          tick={{ fill: INK_MUTED, fontSize: 11 }}
+          tick={{ fill: palette.inkMuted, fontSize: 11 }}
           tickLine={false}
           axisLine={false}
           width={62}
         />
         <Tooltip content={<FanTooltip />} />
-        <Area dataKey="outer" stroke="none" fill={BAND_OUTER} fillOpacity={1} isAnimationActive={false} />
-        <Area dataKey="inner" stroke="none" fill={BAND_INNER} fillOpacity={1} isAnimationActive={false} />
-        <Line dataKey="p50" stroke={MEDIAN} strokeWidth={2} dot={false} isAnimationActive={false} />
+        <Area dataKey="outer" stroke="none" fill={palette.bandOuter} fillOpacity={1} isAnimationActive={false} />
+        <Area dataKey="inner" stroke="none" fill={palette.bandInner} fillOpacity={1} isAnimationActive={false} />
+        <Line dataKey="p50" stroke={palette.median} strokeWidth={2} dot={false} isAnimationActive={false} />
         {markers.map((marker) => (
           <ReferenceLine
             key={marker.label}
             x={marker.age}
-            stroke={BASELINE}
-            label={{ value: marker.label, position: 'top', fill: INK_MUTED, fontSize: 10 }}
+            stroke={palette.baseline}
+            label={{ value: marker.label, position: 'top', fill: palette.inkMuted, fontSize: 10 }}
           />
         ))}
       </ComposedChart>

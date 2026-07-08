@@ -5,6 +5,15 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Retirement Simulator</title>
+    <!-- Apply the saved theme before first paint so a light-mode user doesn't
+         flash the dark default. Mirrors initTheme() in src/theme.ts. -->
+    <script>
+      (function () {
+        var saved = localStorage.getItem('theme')
+        document.documentElement.dataset.theme =
+          saved === 'light' || saved === 'dark' ? saved : 'dark'
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

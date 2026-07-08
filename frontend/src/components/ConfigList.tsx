@@ -1,3 +1,4 @@
+import { toggleTheme, useTheme } from '../theme'
 import type { ConfigListEntry } from '../types'
 
 interface Props {
@@ -24,6 +25,7 @@ export function ConfigList({
   onRename,
   onDelete,
 }: Props) {
+  const theme = useTheme()
   return (
     <nav className="sidebar">
       <h1>
@@ -58,6 +60,15 @@ export function ConfigList({
           delete
         </button>
       </div>
+      <span className="spacer" />
+      <button
+        className="theme-toggle"
+        onClick={toggleTheme}
+        title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+      >
+        <span className="icon">{theme === 'dark' ? '☀' : '☾'}</span>
+        {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+      </button>
     </nav>
   )
 }
