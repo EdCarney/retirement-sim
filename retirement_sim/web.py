@@ -37,6 +37,7 @@ from .config import (
 from .report import PERCENTILES, money
 from .results import SimulationResults
 from .simulate import run_simulation
+from .withdrawal import scenario_withdrawals
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*\.yaml$")
 
@@ -61,6 +62,12 @@ _TEMPLATE: dict[str, Any] = {
 
 
 class SimulateRequest(BaseModel):
+    config: dict[str, Any]
+    n_sims: int | None = None
+    seed: int | None = None
+
+
+class MaxWithdrawalRequest(BaseModel):
     config: dict[str, Any]
     n_sims: int | None = None
     seed: int | None = None
@@ -197,6 +204,12 @@ def create_app(configs_dir: Path, frontend_dist: Path | None = None) -> FastAPI:
         results = run_simulation(config, n_sims=request.n_sims, seed=request.seed)
         return results_payload(results)
 
+    @app.post("/api/max-withdrawal")
+    def max_withdrawal(request: MaxWithdrawalRequest) -> dict[str, Any] | None:
+        config = build_or_422(request.config)
+        results = run_simulation(config, n_sims=request.n_sims, seed=request.seed)
+        return scenario_withdrawals(results)
+
     if frontend_dist is not None and frontend_dist.is_dir():
         app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
 
@@ -312,6 +325,7 @@ def results_payload(results: SimulationResults) -> dict[str, Any]:
             "nominal": histogram(False),
         },
         "assumptions": assumptions,
+        "max_withdrawal": scenario_withdrawals(results),
     }
 
 

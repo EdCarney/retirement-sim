@@ -1,9 +1,13 @@
 import { useState } from 'react'
 import { money, percent } from '../../format'
+import { SCENARIOS } from '../../palette'
 import type { Basis, ResultsPayload } from '../../types'
 import { FanChart } from './FanChart'
 import { Histogram } from './Histogram'
 import { ScenarioChart } from './ScenarioChart'
+
+const scenarioLabel = (percentile: number) =>
+  SCENARIOS.find((s) => s.percentile === percentile)?.label ?? `${percentile}th percentile market`
 
 export function ResultsView({ results }: { results: ResultsPayload }) {
   const [basis, setBasis] = useState<Basis>('real')
@@ -69,6 +73,43 @@ export function ResultsView({ results }: { results: ResultsPayload }) {
         </p>
         <ScenarioChart ages={results.ages} bands={bands} markers={results.markers} />
       </div>
+
+      {results.max_withdrawal && (
+        <div className="chart-card">
+          <h3>Maximum sustainable withdrawal (die-with-zero)</h3>
+          <p className="sub">
+            Largest inflation-adjusted withdrawal that draws each scenario's retirement balance down
+            to about zero over {results.max_withdrawal.n_years} years. Always in today's dollars —
+            independent of the toggle above.
+          </p>
+          <div className="tables-row">
+            {results.max_withdrawal.scenarios.map((scenario) => (
+              <div key={scenario.percentile} className="chart-card">
+                <h3>{scenarioLabel(scenario.percentile)}</h3>
+                <p className="sub">{money(scenario.start_balance)} at retirement</p>
+                <table className="mini">
+                  <thead>
+                    <tr>
+                      <th>percentile</th>
+                      <th className="num">monthly (today's $)</th>
+                      <th className="num">rate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scenario.rows.map((row) => (
+                      <tr key={row.percentile}>
+                        <td>{row.percentile}th</td>
+                        <td className="num">{money(row.monthly)}</td>
+                        <td className="num">{percent(row.rate)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="chart-card">
         <h3>

@@ -156,6 +156,24 @@ export interface Assumption {
   vol: number
 }
 
+export interface MaxWithdrawalRow {
+  percentile: number
+  monthly: number
+  annual: number
+  rate: number
+}
+
+export interface MaxWithdrawalScenario {
+  percentile: number // which market scenario (10/25/50), maps to a scenario label
+  start_balance: number
+  rows: MaxWithdrawalRow[]
+}
+
+export interface MaxWithdrawal {
+  n_years: number
+  scenarios: MaxWithdrawalScenario[]
+}
+
 export interface ResultsPayload {
   goal: { type: string; text: string }
   n_sims: number
@@ -173,4 +191,5 @@ export interface ResultsPayload {
   tables: ResultsTable[]
   histogram: { at: string; age: number } & Record<Basis, HistogramData>
   assumptions: Assumption[]
+  max_withdrawal: MaxWithdrawal | null
 }

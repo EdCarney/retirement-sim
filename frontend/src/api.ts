@@ -1,4 +1,11 @@
-import type { ConfigFile, ConfigListEntry, RawConfig, ResultsPayload, Schema } from './types'
+import type {
+  ConfigFile,
+  ConfigListEntry,
+  MaxWithdrawal,
+  RawConfig,
+  ResultsPayload,
+  Schema,
+} from './types'
 
 export class ApiError extends Error {
   status: number
@@ -65,6 +72,12 @@ export const api = {
   simulate: (config: RawConfig, nSims?: number, seed?: number) =>
     request<ResultsPayload>(
       '/api/simulate',
+      json({ config, n_sims: nSims ?? null, seed: seed ?? null }),
+    ),
+
+  maxWithdrawal: (config: RawConfig, nSims?: number, seed?: number) =>
+    request<MaxWithdrawal | null>(
+      '/api/max-withdrawal',
       json({ config, n_sims: nSims ?? null, seed: seed ?? null }),
     ),
 }
