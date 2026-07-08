@@ -1,4 +1,5 @@
 import type { RawConfig } from '../../types'
+import { CollapsibleCard } from './CollapsibleCard'
 import { NumberField } from './Fields'
 
 interface Props {
@@ -8,8 +9,7 @@ interface Props {
 
 export function SimulationForm({ simulation, onChange }: Props) {
   return (
-    <section className="card">
-      <h3>Simulation</h3>
+    <CollapsibleCard id="simulation" title="Simulation">
       <p className="hint">Set a seed for a reproducible draw; clear it for a fresh one each run.</p>
       <div className="field-row">
         <NumberField
@@ -27,6 +27,6 @@ export function SimulationForm({ simulation, onChange }: Props) {
           placeholder="random"
         />
       </div>
-    </section>
+    </CollapsibleCard>
   )
 }

@@ -106,6 +106,26 @@ def test_social_security_covering_spending_means_no_withdrawals(raw_config, dete
     np.testing.assert_allclose(results.history[:, -1], 500_000 * 1.05**30, rtol=1e-9)
 
 
+def test_disabled_social_security_is_ignored(raw_config, deterministic_market):
+    # Same setup as the covering case above, but with the benefit disabled: the
+    # values are retained yet the plan withdraws as if there were no benefit,
+    # so the ending balance is strictly lower than the fully-covered path.
+    deterministic_market["asset_classes"]["stocks"]["mean"] = 0.05
+    raw_config["market"] = deterministic_market
+    raw_config["person"] = {"current_age": 65, "retirement_age": 65, "death_age": 95}
+    raw_config["accounts"][0]["allocation"] = {"stocks": 1.0}
+    raw_config["goal"] = {"type": "retirement_income", "monthly_income_today": 4000}
+    raw_config["social_security"] = {
+        "monthly_benefit_today": 5000,
+        "claiming_age": 65,
+        "enabled": False,
+    }
+
+    results = _run(raw_config)
+
+    assert results.history[0, -1] < 500_000 * 1.05**30
+
+
 def test_target_amount_basis(raw_config, deterministic_market):
     deterministic_market["inflation"]["mean"] = 0.03
     raw_config["market"] = deterministic_market

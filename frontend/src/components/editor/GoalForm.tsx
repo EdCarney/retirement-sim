@@ -1,13 +1,16 @@
-import type { Goal, Schema } from '../../types'
+import type { Goal, Person, Schema } from '../../types'
+import { CollapsibleCard } from './CollapsibleCard'
 import { NumberField, SelectField } from './Fields'
 
 interface Props {
   goal: Goal
+  person: Person
   schema: Schema
   onChange: (goal: Goal) => void
+  onPersonChange: (person: Person) => void
 }
 
-export function GoalForm({ goal, schema, onChange }: Props) {
+export function GoalForm({ goal, person, schema, onChange, onPersonChange }: Props) {
   const setType = (type: string) => {
     if (type === goal.type) return
     onChange(
@@ -16,13 +19,23 @@ export function GoalForm({ goal, schema, onChange }: Props) {
         : { type, amount: goal.amount ?? 1_000_000, basis: goal.basis ?? 'real' },
     )
   }
+  const setAge = (field: 'retirement_age' | 'death_age') => (value: number | undefined) =>
+    onPersonChange({ ...person, [field]: value ?? 0 })
   return (
-    <section className="card">
-      <h3>Goal</h3>
+    <CollapsibleCard id="goal" title="Goal">
       <p className="hint">
         Either sustain a monthly income (today's dollars) from retirement to death, or reach a
         total amount by retirement.
       </p>
+      <div className="field-row">
+        <NumberField
+          label="retirement age"
+          value={person.retirement_age}
+          onChange={setAge('retirement_age')}
+          min={0}
+        />
+        <NumberField label="death age" value={person.death_age} onChange={setAge('death_age')} min={0} />
+      </div>
       <div className="field-row">
         <SelectField label="type" value={goal.type} options={schema.goal_types} onChange={setType} width={190} />
         {goal.type === 'retirement_income' ? (
@@ -54,6 +67,6 @@ export function GoalForm({ goal, schema, onChange }: Props) {
           </>
         )}
       </div>
-    </section>
+    </CollapsibleCard>
   )
 }

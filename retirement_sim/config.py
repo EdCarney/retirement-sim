@@ -166,6 +166,10 @@ class SocialSecurity:
     # age) rather than given directly; kept for reporting.
     pia_monthly: float | None = None
     full_retirement_age: float | None = None
+    # When false, the benefit values are retained (so they can be toggled back
+    # on) but the plan runs as if there were no Social Security. See
+    # PlanConfig.active_social_security, which every consumer goes through.
+    enabled: bool = True
 
 
 @dataclass(frozen=True)
@@ -210,6 +214,16 @@ class PlanConfig:
     fees: FeesConfig = field(default_factory=FeesConfig)
     simulation: SimulationSettings = field(default_factory=SimulationSettings)
     output: OutputSettings = field(default_factory=OutputSettings)
+
+    @property
+    def active_social_security(self) -> SocialSecurity | None:
+        """The Social Security config only when it should affect the plan.
+
+        A disabled benefit keeps its values in the file but is treated as
+        absent by the simulation, charts, and reports.
+        """
+        ss = self.social_security
+        return ss if ss is not None and ss.enabled else None
 
 
 def load_config(path: str | Path) -> PlanConfig:
@@ -602,6 +616,7 @@ def _build_social_security(raw: Any, person: PersonConfig) -> SocialSecurity | N
         claiming_age=claiming_age,
         pia_monthly=pia_monthly,
         full_retirement_age=full_retirement_age,
+        enabled=bool(raw.get("enabled", True)),
     )
 
 
