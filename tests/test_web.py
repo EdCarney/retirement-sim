@@ -1,6 +1,7 @@
 """API tests for the stateless web server (retirement_sim.web)."""
 
 import copy
+import json
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,29 @@ from retirement_sim.config import build_config
 from retirement_sim.web import MAX_N_SIMS, _clamp_n_sims, create_app
 
 CONFIG_DIR = Path(__file__).resolve().parent.parent / "configs"
+
+
+def run_simulate(client, **payload):
+    """POST /api/simulate and parse its NDJSON stream.
+
+    Returns ``(result, progress)``: the final result payload and the list of
+    progress fractions streamed before it.
+    """
+    response = client.post("/api/simulate", json=payload)
+    assert response.status_code == 200
+    result = None
+    progress = []
+    for line in response.text.splitlines():
+        if not line.strip():
+            continue
+        msg = json.loads(line)
+        if msg["type"] == "progress":
+            progress.append(msg["value"])
+        elif msg["type"] == "result":
+            result = msg["payload"]
+        elif msg["type"] == "error":
+            raise AssertionError(f"simulation errored: {msg['error']}")
+    return result, progress
 
 
 @pytest.fixture
@@ -77,11 +101,12 @@ def test_schema_endpoint(client):
 
 
 def test_simulate_payload(client, example_income):
-    response = client.post(
-        "/api/simulate", json={"config": example_income, "n_sims": 400, "seed": 7}
-    )
-    assert response.status_code == 200
-    payload = response.json()
+    payload, progress = run_simulate(client, config=example_income, n_sims=400, seed=7)
+
+    # Progress streams a leading 0, then rises to a final 1.0.
+    assert progress[0] == 0.0
+    assert progress[-1] == pytest.approx(1.0)
+    assert progress == sorted(progress)
 
     assert payload["n_sims"] == 400
     assert 0.0 < payload["success_probability"] < 1.0
@@ -125,8 +150,5 @@ def test_simulate_clamps_oversized_n_sims(client, example_income, monkeypatch):
     # payload reports the clamped value rather than OOMing. Patch the cap low
     # so the test doesn't actually run the real 150k-path simulation.
     monkeypatch.setattr("retirement_sim.web.MAX_N_SIMS", 300)
-    response = client.post(
-        "/api/simulate", json={"config": example_income, "n_sims": 10_000_000, "seed": 1}
-    )
-    assert response.status_code == 200
-    assert response.json()["n_sims"] == 300
+    payload, _ = run_simulate(client, config=example_income, n_sims=10_000_000, seed=1)
+    assert payload["n_sims"] == 300

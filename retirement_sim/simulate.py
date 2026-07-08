@@ -19,6 +19,8 @@ withdrawals at [retirement_age, death_age).
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import numpy as np
 
 from .allocation import resolve_allocations
@@ -55,9 +57,18 @@ def apply_withdrawal(balances: np.ndarray, amounts: np.ndarray) -> np.ndarray:
 
 
 def run_simulation(
-    config: PlanConfig, n_sims: int | None = None, seed: int | None = None
+    config: PlanConfig,
+    n_sims: int | None = None,
+    seed: int | None = None,
+    on_progress: Callable[[float], None] | None = None,
 ) -> SimulationResults:
-    """Run the Monte Carlo simulation. ``n_sims``/``seed`` override config."""
+    """Run the Monte Carlo simulation. ``n_sims``/``seed`` override config.
+
+    ``on_progress``, if given, is called after each simulated year with a
+    fraction in ``(0, 1]`` — the year loop is the natural progress unit since
+    every path advances a year in lockstep. It lets the web server stream a
+    progress bar; the CLI leaves it unset.
+    """
     person = config.person
     goal = config.goal
     n_sims = n_sims if n_sims is not None else config.simulation.n_sims
@@ -115,6 +126,9 @@ def run_simulation(
         history[:, t + 1] = balances.sum(axis=1)
         account_history[:, t + 1] = balances
         cum_inflation_history[:, t + 1] = cum_inflation
+
+        if on_progress is not None:
+            on_progress((t + 1) / n_years)
 
     return SimulationResults(
         config=config,

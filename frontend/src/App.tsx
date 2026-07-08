@@ -36,6 +36,7 @@ export default function App() {
   const [banner, setBanner] = useState<{ kind: 'error' | 'ok'; text: string } | null>(null)
   const [results, setResults] = useState<ResultsPayload | null>(null)
   const [running, setRunning] = useState(false)
+  const [progress, setProgress] = useState(0)
   const [runSims, setRunSims] = useState<number | undefined>(undefined)
   const [runSeed, setRunSeed] = useState<number | undefined>(undefined)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -189,9 +190,10 @@ export default function App() {
   const run = async () => {
     if (!draft) return
     setRunning(true)
+    setProgress(0)
     setBanner(null)
     try {
-      setResults(await api.simulate(draft, runSims, runSeed))
+      setResults(await api.simulate(draft, runSims, runSeed, setProgress))
     } catch (error) {
       const message = error instanceof ApiError ? error.message : String(error)
       setBanner({ kind: 'error', text: `simulation failed — ${message}` })
@@ -314,6 +316,18 @@ export default function App() {
               </button>
               <NumberField label="sims override" value={runSims} onChange={setRunSims} placeholder="config" min={1} />
               <NumberField label="seed override" value={runSeed} onChange={setRunSeed} placeholder="config" />
+              {running && (
+                <div
+                  className="run-progress"
+                  role="progressbar"
+                  aria-valuenow={Math.round(progress * 100)}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                >
+                  <div className="run-progress-fill" style={{ width: `${Math.round(progress * 100)}%` }} />
+                  <span className="run-progress-label">{Math.round(progress * 100)}%</span>
+                </div>
+              )}
             </div>
 
             {results && <ResultsView results={results} />}
