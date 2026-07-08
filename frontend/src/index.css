@@ -169,9 +169,43 @@ select:disabled {
   gap: 4px;
 }
 
+.sidebar-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 4px 12px;
+}
+
 .sidebar h1 {
   font-size: 15px;
-  margin: 0 4px 12px;
+  margin: 0;
+  flex: 1;
+}
+
+.sidebar-toggle {
+  border: none;
+  background: none;
+  color: var(--ink-muted);
+  font-size: 15px;
+  line-height: 1;
+  padding: 3px 6px;
+}
+
+.sidebar-toggle:hover:not(:disabled) {
+  color: var(--accent);
+  border: none;
+}
+
+/* Collapsed: a thin rail beside the editor (desktop / landscape phones);
+   the stacked mobile layout overrides this into a slim horizontal bar. */
+.sidebar.collapsed {
+  width: 42px;
+  padding: 12px 4px;
+  align-items: center;
+}
+
+.sidebar.collapsed .collapsed-name {
+  display: none;
 }
 
 .sidebar h1 small {
@@ -800,6 +834,25 @@ pre.yaml {
     border-right: none;
     border-bottom: 1px solid var(--grid);
     padding: 14px 16px 12px;
+  }
+
+  /* Collapsed in the stacked layout: a slim horizontal bar naming the
+     active plan, instead of the desktop rail. */
+  .sidebar.collapsed {
+    width: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+  }
+
+  .sidebar.collapsed .collapsed-name {
+    display: inline;
+    font-size: 13.5px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* All five actions fit one wrapping row on top; the flex:1 spacer that
