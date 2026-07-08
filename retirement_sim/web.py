@@ -15,7 +15,11 @@ canonical writer, so a file saved from the UI runs unchanged via
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import queue
+import threading
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +27,7 @@ import numpy as np
 import uvicorn
 import yaml
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -105,11 +110,23 @@ def create_app(frontend_dist: Path | None = None) -> FastAPI:
         }
 
     @app.post("/api/simulate")
-    def simulate(request: SimulateRequest) -> dict[str, Any]:
+    def simulate(request: SimulateRequest) -> StreamingResponse:
+        """Run a simulation, streaming progress then the final result.
+
+        The response is newline-delimited JSON (NDJSON): zero or more
+        ``{"type": "progress", "value": <0..1>}`` lines followed by one
+        ``{"type": "result", "payload": ...}`` (or ``{"type": "error", ...}``)
+        line. Config validation still happens up front, so an invalid config
+        returns a plain ``422`` before the stream opens.
+        """
         config = build_or_422(request.config)
         n_sims = _clamp_n_sims(request.n_sims, config)
-        results = run_simulation(config, n_sims=n_sims, seed=request.seed)
-        return results_payload(results)
+        return StreamingResponse(
+            _simulate_stream(config, n_sims, request.seed),
+            media_type="application/x-ndjson",
+            # Discourage proxy buffering so progress reaches the browser live.
+            headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+        )
 
     @app.post("/api/max-withdrawal")
     def max_withdrawal(request: MaxWithdrawalRequest) -> dict[str, Any] | None:
@@ -235,6 +252,51 @@ def results_payload(results: SimulationResults) -> dict[str, Any]:
         "assumptions": assumptions,
         "max_withdrawal": scenario_withdrawals(results),
     }
+
+
+def _simulate_stream(
+    config: PlanConfig, n_sims: int, seed: int | None
+) -> Iterator[bytes]:
+    """Yield NDJSON progress lines, then the final result (or error) line.
+
+    The simulation runs on a worker thread that pushes events onto a queue;
+    this generator drains them to the wire. numpy releases the GIL during the
+    heavy array math, so the worker keeps computing while we block on the
+    queue — progress genuinely reflects work in flight.
+    """
+    events: queue.Queue[tuple[str, Any]] = queue.Queue()
+
+    def on_progress(fraction: float) -> None:
+        events.put(("progress", fraction))
+
+    def worker() -> None:
+        try:
+            results = run_simulation(
+                config, n_sims=n_sims, seed=seed, on_progress=on_progress
+            )
+            events.put(("result", results_payload(results)))
+        except Exception as exc:  # any failure is surfaced as an error line
+            events.put(("error", str(exc)))
+
+    threading.Thread(target=worker, daemon=True).start()
+
+    # An immediate 0% makes the bar appear before path generation (the first,
+    # un-instrumented chunk of work) completes.
+    yield _ndjson({"type": "progress", "value": 0.0})
+    while True:
+        kind, value = events.get()
+        if kind == "progress":
+            yield _ndjson({"type": "progress", "value": value})
+        elif kind == "result":
+            yield _ndjson({"type": "result", "payload": value})
+            return
+        else:
+            yield _ndjson({"type": "error", "error": value})
+            return
+
+
+def _ndjson(obj: dict[str, Any]) -> bytes:
+    return (json.dumps(obj) + "\n").encode()
 
 
 def _clamp_n_sims(override: int | None, config: PlanConfig) -> int:
