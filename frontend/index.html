@@ -4,14 +4,20 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Tint mobile browser chrome to match the app surface; the inline
+         script below keeps it in sync with the saved theme choice. -->
+    <meta name="theme-color" content="#16161a" />
     <title>Retirement Simulator</title>
     <!-- Apply the saved theme before first paint so a light-mode user doesn't
          flash the dark default. Mirrors initTheme() in src/theme.ts. -->
     <script>
       (function () {
         var saved = localStorage.getItem('theme')
-        document.documentElement.dataset.theme =
-          saved === 'light' || saved === 'dark' ? saved : 'dark'
+        var theme = saved === 'light' || saved === 'dark' ? saved : 'dark'
+        document.documentElement.dataset.theme = theme
+        document
+          .querySelector('meta[name="theme-color"]')
+          .setAttribute('content', theme === 'light' ? '#fcfcfb' : '#16161a')
       })()
     </script>
   </head>

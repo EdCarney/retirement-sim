@@ -221,11 +221,14 @@ select:disabled {
 .sidebar .actions {
   margin-top: 10px;
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
+/* flex-basis 40% packs two buttons per row in the 250px sidebar; an odd
+   trailing button (delete) stretches to fill its row. */
 .sidebar .actions button {
-  flex: 1;
+  flex: 1 1 40%;
   font-size: 12.5px;
   padding: 5px 0;
 }
@@ -502,15 +505,15 @@ section.card > h3 {
   line-height: 1.45;
   text-transform: none;
   white-space: normal;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.1s ease;
+  /* display:none (not just visibility) — a hidden bubble must not occupy
+     layout space, or bubbles near the viewport edge stretch the page's
+     horizontal scroll width on narrow screens. */
+  display: none;
 }
 
 .infotip-icon:hover + .infotip-bubble,
 .infotip:focus-within .infotip-bubble {
-  opacity: 1;
-  visibility: visible;
+  display: block;
 }
 
 .field.checkbox {
@@ -774,4 +777,78 @@ pre.yaml {
   color: var(--ink-muted);
   padding: 60px 0;
   text-align: center;
+}
+
+/* --- phone layout --- */
+
+/* Below ~720px the fixed sidebar can't share the row with the editor, so the
+   app stacks: plan picker on top, editor below. Everything else (field rows,
+   charts, result tables) already wraps or sizes to 100%. */
+@media (max-width: 720px) {
+  /* An open infotip bubble near the screen edge may poke past the viewport;
+     clip it rather than let it widen the page. */
+  body {
+    overflow-x: hidden;
+  }
+
+  #root {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--grid);
+    padding: 14px 16px 12px;
+  }
+
+  /* All five actions fit one wrapping row on top; the flex:1 spacer that
+     pushes the theme toggle to the bottom of a column is meaningless here. */
+  .sidebar .actions button {
+    flex: 1 1 auto;
+    padding: 5px 10px;
+  }
+
+  .sidebar .spacer {
+    display: none;
+  }
+
+  .theme-toggle {
+    justify-content: flex-start;
+    width: auto;
+  }
+
+  main {
+    padding: 16px 14px 48px;
+  }
+
+  .topbar {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .run-bar {
+    flex-wrap: wrap;
+  }
+
+  /* The progress bar takes its own full row instead of squeezing beside the
+     override fields. */
+  .run-progress {
+    flex-basis: 100%;
+  }
+
+  /* Keep hover-positioned tooltips from spilling past the screen edge. */
+  .infotip-bubble {
+    max-width: min(230px, 74vw);
+  }
+}
+
+/* iOS Safari force-zooms any focused input under 16px, and it applies in
+   landscape too — so this keys off the pointer type (any touch-primary
+   device), not viewport width. Desktop with a mouse keeps the 15px inputs. */
+@media (pointer: coarse) {
+  input,
+  select {
+    font-size: 16px;
+  }
 }

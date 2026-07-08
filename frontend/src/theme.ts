@@ -30,6 +30,10 @@ const listeners = new Set<() => void>()
 export function setTheme(theme: Theme): void {
   document.documentElement.dataset.theme = theme
   localStorage.setItem(STORAGE_KEY, theme)
+  // Keep mobile browser chrome tinted to match (values = --surface per theme).
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute('content', theme === 'light' ? '#fcfcfb' : '#16161a')
   listeners.forEach((notify) => notify())
 }
 
