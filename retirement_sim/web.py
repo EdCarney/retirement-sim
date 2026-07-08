@@ -15,8 +15,7 @@ canonical writer, so a file saved from the UI runs unchanged via
 from __future__ import annotations
 
 import argparse
-import threading
-import webbrowser
+import os
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +40,12 @@ from .report import PERCENTILES, money
 from .results import SimulationResults
 from .simulate import run_simulation
 from .withdrawal import scenario_withdrawals
+
+# Cap simulation size at the HTTP boundary: n_sims sets numpy array
+# dimensions, so an unbounded value from an untrusted caller is an OOM / cost
+# event in a hosted deployment. The CLI is a trusted local caller and is not
+# clamped.
+MAX_N_SIMS = 150_000
 
 
 class SimulateRequest(BaseModel):
@@ -102,13 +107,15 @@ def create_app(frontend_dist: Path | None = None) -> FastAPI:
     @app.post("/api/simulate")
     def simulate(request: SimulateRequest) -> dict[str, Any]:
         config = build_or_422(request.config)
-        results = run_simulation(config, n_sims=request.n_sims, seed=request.seed)
+        n_sims = _clamp_n_sims(request.n_sims, config)
+        results = run_simulation(config, n_sims=n_sims, seed=request.seed)
         return results_payload(results)
 
     @app.post("/api/max-withdrawal")
     def max_withdrawal(request: MaxWithdrawalRequest) -> dict[str, Any] | None:
         config = build_or_422(request.config)
-        results = run_simulation(config, n_sims=request.n_sims, seed=request.seed)
+        n_sims = _clamp_n_sims(request.n_sims, config)
+        results = run_simulation(config, n_sims=n_sims, seed=request.seed)
         return scenario_withdrawals(results)
 
     if frontend_dist is not None and frontend_dist.is_dir():
@@ -230,6 +237,16 @@ def results_payload(results: SimulationResults) -> dict[str, Any]:
     }
 
 
+def _clamp_n_sims(override: int | None, config: PlanConfig) -> int:
+    """Effective n_sims for a request, capped at ``MAX_N_SIMS``.
+
+    Mirrors ``run_simulation``'s fallback (override, else the config's value)
+    so the cap applies no matter which path a caller uses to inflate it.
+    """
+    n_sims = override if override is not None else config.simulation.n_sims
+    return max(1, min(n_sims, MAX_N_SIMS))
+
+
 def _round_list(values: np.ndarray) -> list[float]:
     return [round(float(v), 2) for v in values]
 
@@ -240,11 +257,21 @@ def _default_frontend_dist() -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="retirement-sim-web", description="Local web UI for the retirement simulator."
+        prog="retirement-sim-web", description="Web server for the retirement simulator."
     )
-    parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
+    parser.add_argument(
+        "--host", default="0.0.0.0", help="interface to bind (default: all)"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="port to bind (default: $PORT, else 8000)",
+    )
     args = parser.parse_args(argv)
+
+    # App Service (and most container platforms) inject the port via $PORT.
+    port = args.port if args.port is not None else int(os.environ.get("PORT", "8000"))
 
     frontend_dist = _default_frontend_dist()
     if not frontend_dist.is_dir():
@@ -255,11 +282,10 @@ def main(argv: list[str] | None = None) -> int:
         frontend_dist = None
 
     app = create_app(frontend_dist)
-    url = f"http://127.0.0.1:{args.port}"
-    print(f"Serving on {url}")
-    if not args.no_browser:
-        threading.Timer(0.8, webbrowser.open, [url]).start()
-    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
+    print(f"Serving on http://{args.host}:{port}")
+    # log_level="warning" keeps request bodies (which carry plan data) out of
+    # the logs — see the privacy note in the module docstring.
+    uvicorn.run(app, host=args.host, port=port, log_level="warning")
     return 0
 
 

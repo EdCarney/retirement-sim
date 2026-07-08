@@ -8,7 +8,7 @@ import yaml
 from fastapi.testclient import TestClient
 
 from retirement_sim.config import build_config
-from retirement_sim.web import create_app
+from retirement_sim.web import MAX_N_SIMS, _clamp_n_sims, create_app
 
 CONFIG_DIR = Path(__file__).resolve().parent.parent / "configs"
 
@@ -107,3 +107,26 @@ def test_simulate_payload(client, example_income):
 def test_simulate_invalid_config_422(client):
     response = client.post("/api/simulate", json={"config": {"person": {}}})
     assert response.status_code == 422
+
+
+def test_clamp_n_sims_caps_both_paths(example_income):
+    config = build_config(example_income)
+    # An override above the cap is clamped.
+    assert _clamp_n_sims(10_000_000, config) == MAX_N_SIMS
+    # Reasonable values pass through untouched.
+    assert _clamp_n_sims(500, config) == 500
+    # A config that smuggles a huge value in (no override) is capped too.
+    smuggled = build_config({**example_income, "simulation": {"n_sims": 10_000_000}})
+    assert _clamp_n_sims(None, smuggled) == MAX_N_SIMS
+
+
+def test_simulate_clamps_oversized_n_sims(client, example_income, monkeypatch):
+    # A hostile n_sims must not size the numpy arrays; it is capped, and the
+    # payload reports the clamped value rather than OOMing. Patch the cap low
+    # so the test doesn't actually run the real 150k-path simulation.
+    monkeypatch.setattr("retirement_sim.web.MAX_N_SIMS", 300)
+    response = client.post(
+        "/api/simulate", json={"config": example_income, "n_sims": 10_000_000, "seed": 1}
+    )
+    assert response.status_code == 200
+    assert response.json()["n_sims"] == 300

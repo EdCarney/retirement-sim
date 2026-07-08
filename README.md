@@ -64,6 +64,24 @@ example files in `configs/` are a good starting point to upload.
 For frontend development, `npm run dev` inside `frontend/` starts a Vite dev
 server with hot reload that proxies `/api` to the Python server.
 
+### Running in a container
+
+The app ships as a single self-contained image: a multi-stage `Dockerfile`
+builds the React frontend and serves it, alongside the JSON API, from one
+stateless FastAPI process (no database, no volumes).
+
+```bash
+docker build -t retirement-sim .
+docker run --rm -p 8000:8000 retirement-sim   # open http://localhost:8000
+```
+
+The server binds `0.0.0.0` and listens on `$PORT` (default `8000`), so hosts
+that inject a port — e.g. Azure App Service — work without changes:
+
+```bash
+docker run --rm -e PORT=9000 -p 9000:9000 retirement-sim
+```
+
 ## Configuration
 
 See `configs/example_income_goal.yaml` (fully commented) and
