@@ -1,4 +1,4 @@
-"""API tests for the local web server (retirement_sim.web)."""
+"""API tests for the stateless web server (retirement_sim.web)."""
 
 import copy
 from pathlib import Path
@@ -7,124 +7,58 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-from retirement_sim.config import load_config
+from retirement_sim.config import build_config
 from retirement_sim.web import create_app
 
 CONFIG_DIR = Path(__file__).resolve().parent.parent / "configs"
 
 
 @pytest.fixture
-def configs_dir(tmp_path):
-    for name in ("example_income_goal.yaml", "example_target_amount.yaml"):
-        (tmp_path / name).write_text((CONFIG_DIR / name).read_text())
-    return tmp_path
+def example_income() -> dict:
+    return yaml.safe_load((CONFIG_DIR / "example_income_goal.yaml").read_text())
 
 
 @pytest.fixture
-def client(configs_dir):
-    return TestClient(create_app(configs_dir))
+def client():
+    return TestClient(create_app())
 
 
-def test_list_configs(client):
-    entries = client.get("/api/configs").json()
-    names = [e["name"] for e in entries]
-    assert names == ["example_income_goal.yaml", "example_target_amount.yaml"]
-    by_name = {e["name"]: e for e in entries}
-    assert by_name["example_income_goal.yaml"]["goal_type"] == "retirement_income"
-    assert all(e["error"] is None for e in entries)
+def test_no_filesystem_crud_endpoints(client):
+    # The server owns no plan state; the storage endpoints are gone.
+    assert client.get("/api/configs").status_code == 404
+    assert client.get("/api/configs/example_income_goal.yaml").status_code == 404
+    assert client.put("/api/configs/x.yaml", json={}).status_code == 404
+    assert client.post("/api/configs/x.yaml").status_code == 404
+    assert client.delete("/api/configs/x.yaml").status_code == 404
 
 
-def test_get_config(client):
-    body = client.get("/api/configs/example_income_goal.yaml").json()
-    assert body["config"]["person"]["current_age"] == 35
-    assert body["error"] is None
-    assert "person:" in body["yaml"]
+def test_serialize_roundtrips_to_cli_compatible_yaml(client, example_income, tmp_path):
+    example_income["person"]["retirement_age"] = 60
+
+    text = client.post("/api/serialize", json=example_income).json()["yaml"]
+
+    # The canonical serializer preserves key order and stays CLI-loadable:
+    # a downloaded file must run unchanged through load_config.
+    assert text.startswith("person:")
+    path = tmp_path / "downloaded.yaml"
+    path.write_text(text)
+    reloaded = build_config(yaml.safe_load(path.read_text()))
+    assert reloaded.person.retirement_age == 60
 
 
-def test_get_missing_config_404(client):
-    assert client.get("/api/configs/nope.yaml").status_code == 404
+def test_serialize_allows_incomplete_config(client):
+    # A work-in-progress need not validate to be serialized for download.
+    text = client.post("/api/serialize", json={"person": {}}).json()["yaml"]
+    assert yaml.safe_load(text) == {"person": {}}
 
 
-@pytest.mark.parametrize("name", ["../evil.yaml", "..%2Fevil.yaml", "evil.txt", ".yaml"])
-def test_bad_names_rejected(client, name):
-    response = client.get(f"/api/configs/{name}")
-    assert response.status_code in (400, 404)  # 404 when the router rejects the path
+def test_validate_endpoint(client, example_income):
+    assert client.post("/api/validate", json=example_income).json() == {
+        "valid": True,
+        "error": None,
+    }
 
-
-def test_save_roundtrip_stays_cli_compatible(client, configs_dir):
-    body = client.get("/api/configs/example_income_goal.yaml").json()
-    raw = body["config"]
-    raw["person"]["retirement_age"] = 60
-
-    response = client.put("/api/configs/example_income_goal.yaml", json=raw)
-    assert response.status_code == 200
-
-    on_disk = yaml.safe_load((configs_dir / "example_income_goal.yaml").read_text())
-    assert on_disk["person"]["retirement_age"] == 60
-    config = load_config(configs_dir / "example_income_goal.yaml")
-    assert config.person.retirement_age == 60
-
-
-def test_save_invalid_config_422_with_message(client, configs_dir):
-    raw = client.get("/api/configs/example_income_goal.yaml").json()["config"]
-    original = (configs_dir / "example_income_goal.yaml").read_text()
-    raw["person"]["death_age"] = 50  # before retirement
-
-    response = client.put("/api/configs/example_income_goal.yaml", json=raw)
-    assert response.status_code == 422
-    assert "retirement_age" in response.json()["detail"]
-    # Invalid saves must not touch the file.
-    assert (configs_dir / "example_income_goal.yaml").read_text() == original
-
-
-def test_create_delete_and_copy(client, configs_dir):
-    created = client.post("/api/configs/new_plan.yaml")
-    assert created.status_code == 201
-    assert load_config(configs_dir / "new_plan.yaml")  # template is valid
-
-    assert client.post("/api/configs/new_plan.yaml").status_code == 409
-
-    copied = client.post("/api/configs/copy.yaml", params={"copy_from": "example_income_goal.yaml"})
-    assert copied.status_code == 201
-    assert copied.json()["config"]["person"]["current_age"] == 35
-
-    assert client.delete("/api/configs/copy.yaml").status_code == 200
-    assert not (configs_dir / "copy.yaml").exists()
-    assert client.delete("/api/configs/copy.yaml").status_code == 404
-
-
-def test_rename_config(client, configs_dir):
-    response = client.post(
-        "/api/configs/example_income_goal.yaml/rename", params={"to": "renamed.yaml"}
-    )
-    assert response.status_code == 200
-    assert response.json()["name"] == "renamed.yaml"
-    assert not (configs_dir / "example_income_goal.yaml").exists()
-    assert load_config(configs_dir / "renamed.yaml")  # content moved intact
-
-    # Missing source is a 404; colliding target is a 409.
-    assert (
-        client.post("/api/configs/gone.yaml/rename", params={"to": "x.yaml"}).status_code == 404
-    )
-    assert (
-        client.post(
-            "/api/configs/renamed.yaml/rename", params={"to": "example_target_amount.yaml"}
-        ).status_code
-        == 409
-    )
-    # An invalid target name is rejected before touching disk.
-    assert (
-        client.post("/api/configs/renamed.yaml/rename", params={"to": "../evil.yaml"}).status_code
-        == 400
-    )
-    assert (configs_dir / "renamed.yaml").exists()
-
-
-def test_validate_endpoint(client):
-    raw = client.get("/api/configs/example_income_goal.yaml").json()["config"]
-    assert client.post("/api/validate", json=raw).json() == {"valid": True, "error": None}
-
-    bad = copy.deepcopy(raw)
+    bad = copy.deepcopy(example_income)
     bad["accounts"][0]["allocation"] = {"stocks": 0.5}
     verdict = client.post("/api/validate", json=bad).json()
     assert verdict["valid"] is False
@@ -142,9 +76,10 @@ def test_schema_endpoint(client):
     assert schema["market_defaults"]["bootstrap"]["recenter"] is False
 
 
-def test_simulate_payload(client):
-    raw = client.get("/api/configs/example_income_goal.yaml").json()["config"]
-    response = client.post("/api/simulate", json={"config": raw, "n_sims": 400, "seed": 7})
+def test_simulate_payload(client, example_income):
+    response = client.post(
+        "/api/simulate", json={"config": example_income, "n_sims": 400, "seed": 7}
+    )
     assert response.status_code == 200
     payload = response.json()
 

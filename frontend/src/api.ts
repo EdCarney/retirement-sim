@@ -1,11 +1,4 @@
-import type {
-  ConfigFile,
-  ConfigListEntry,
-  MaxWithdrawal,
-  RawConfig,
-  ResultsPayload,
-  Schema,
-} from './types'
+import type { MaxWithdrawal, RawConfig, ResultsPayload, Schema } from './types'
 
 export class ApiError extends Error {
   status: number
@@ -38,31 +31,10 @@ const json = (body: unknown): RequestInit => ({
 })
 
 export const api = {
-  listConfigs: () => request<ConfigListEntry[]>('/api/configs'),
-
-  getConfig: (name: string) => request<ConfigFile>(`/api/configs/${encodeURIComponent(name)}`),
-
-  saveConfig: (name: string, config: RawConfig) =>
-    request<{ name: string; yaml: string }>(`/api/configs/${encodeURIComponent(name)}`, {
-      ...json(config),
-      method: 'PUT',
-    }),
-
-  createConfig: (name: string, copyFrom?: string) =>
-    request<ConfigFile>(
-      `/api/configs/${encodeURIComponent(name)}` +
-        (copyFrom ? `?copy_from=${encodeURIComponent(copyFrom)}` : ''),
-      { method: 'POST' },
-    ),
-
-  renameConfig: (name: string, to: string) =>
-    request<{ name: string }>(
-      `/api/configs/${encodeURIComponent(name)}/rename?to=${encodeURIComponent(to)}`,
-      { method: 'POST' },
-    ),
-
-  deleteConfig: (name: string) =>
-    request<{ deleted: string }>(`/api/configs/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  // Canonical YAML for download — the single writer that keeps files
+  // CLI-byte-matched (see /api/serialize in retirement_sim/web.py).
+  serialize: (config: RawConfig) =>
+    request<{ yaml: string }>('/api/serialize', json(config)).then((r) => r.yaml),
 
   validate: (config: RawConfig) =>
     request<{ valid: boolean; error: string | null }>('/api/validate', json(config)),

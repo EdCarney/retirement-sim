@@ -1,14 +1,15 @@
 import { toggleTheme, useTheme } from '../theme'
-import type { ConfigListEntry } from '../types'
+import type { Plan } from '../types'
 
 interface Props {
-  configs: ConfigListEntry[]
+  plans: Plan[]
   selected: string | null
-  onSelect: (name: string) => void
+  onSelect: (id: string) => void
   onCreate: () => void
   onDuplicate: () => void
   onRename: () => void
   onDelete: () => void
+  onUpload: () => void
 }
 
 const GOAL_TAGS: Record<string, string> = {
@@ -17,13 +18,14 @@ const GOAL_TAGS: Record<string, string> = {
 }
 
 export function ConfigList({
-  configs,
+  plans,
   selected,
   onSelect,
   onCreate,
   onDuplicate,
   onRename,
   onDelete,
+  onUpload,
 }: Props) {
   const theme = useTheme()
   return (
@@ -32,30 +34,30 @@ export function ConfigList({
         Retirement Simulator
         <small>Monte Carlo plan analysis</small>
       </h1>
-      {configs.map((entry) => (
+      {plans.map((plan) => (
         <div
-          key={entry.name}
-          className={`config-item${entry.name === selected ? ' selected' : ''}`}
-          onClick={() => onSelect(entry.name)}
-          title={entry.error ?? undefined}
+          key={plan.id}
+          className={`config-item${plan.id === selected ? ' selected' : ''}`}
+          onClick={() => onSelect(plan.id)}
         >
-          <span className="name">{entry.name.replace(/\.yaml$/, '')}</span>
-          <span className="goal-tag">
-            {entry.error ? '⚠' : GOAL_TAGS[entry.goal_type ?? ''] ?? ''}
-          </span>
+          <span className="name">{plan.name}</span>
+          <span className="goal-tag">{GOAL_TAGS[plan.config.goal?.type ?? ''] ?? ''}</span>
         </div>
       ))}
-      {configs.length === 0 && <div className="config-item">no configs yet</div>}
+      {plans.length === 0 && <div className="config-item">no plans yet</div>}
       <div className="actions">
         <button onClick={onCreate}>new</button>
+        <button onClick={onUpload}>upload</button>
+      </div>
+      <div className="actions">
         <button onClick={onDuplicate} disabled={!selected}>
           duplicate
         </button>
-      </div>
-      <div className="actions">
         <button onClick={onRename} disabled={!selected}>
           rename
         </button>
+      </div>
+      <div className="actions">
         <button onClick={onDelete} disabled={!selected}>
           delete
         </button>

@@ -47,16 +47,19 @@ Then start the server (it opens a browser tab automatically):
 uv run retirement-sim-web
 ```
 
-Options: `--port N` (default 8000), `--configs-dir DIR` (default `configs`),
-`--no-browser`. The server binds to 127.0.0.1 only.
+Options: `--port N` (default 8000), `--no-browser`. The server binds to
+127.0.0.1 only.
 
-The UI edits the same YAML files in `configs/` that the CLI reads — create,
-duplicate, and delete them in the sidebar, edit via forms (with a read-only
-YAML preview tab), and hit **Run simulation** for the success probability,
-percentile tables, and interactive versions of the three charts with a
-today's-dollars / nominal toggle. Saving through the UI re-serializes the
-YAML, so hand-written comments in a config file are lost on the first save
-from the browser.
+Plans live **in your browser**, not on the server: the sidebar's plan list is
+persisted to `localStorage`, so your work survives a reload while the backend
+stays stateless (it only validates, serializes, and runs simulations — it never
+writes your financial data to disk). Create or **upload** a plan YAML file, edit
+it via forms (with a read-only YAML preview tab), **download** it to keep a copy
+on disk, and hit **Run simulation** for the success probability, percentile
+tables, and interactive versions of the three charts with a today's-dollars /
+nominal toggle. Downloaded files are byte-compatible with the CLI, so a plan
+saved from the browser runs unchanged via `retirement-sim my_plan.yaml`. The
+example files in `configs/` are a good starting point to upload.
 
 For frontend development, `npm run dev` inside `frontend/` starts a Vite dev
 server with hot reload that proxies `/api` to the Python server.
@@ -190,7 +193,7 @@ retirement_sim/
   simulate.py    vectorized Monte Carlo engine
   results.py     success probability, percentiles, depletion stats
   report.py      terminal summary and PNG charts
-  web.py         FastAPI server for the web UI (config CRUD + simulate API)
+  web.py         stateless FastAPI server for the web UI (validate/serialize/simulate)
 frontend/        React web UI (Vite + TypeScript + Recharts)
 configs/         example plan configs
 tests/           unit, statistical, and end-to-end tests

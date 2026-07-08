@@ -87,20 +87,15 @@ export interface RawConfig {
   output?: Record<string, unknown>
 }
 
-// --- API shapes ---
+// --- Session plans (browser-owned) ---
 
-export interface ConfigListEntry {
-  name: string
-  modified: string
-  goal_type: string | null
-  error: string | null
-}
-
-export interface ConfigFile {
+// A plan the user is working on. Identity is the generated `id`, not the
+// display `name`: names are just labels and may collide or change. Persisted
+// to localStorage; never stored on the server.
+export interface Plan {
+  id: string
   name: string
   config: RawConfig
-  yaml: string
-  error: string | null
 }
 
 export interface Schema {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, ApiError } from './api'
 import { ConfigList } from './components/ConfigList'
 import { AccountsForm } from './components/editor/AccountsForm'
@@ -11,13 +11,25 @@ import { SimulationForm } from './components/editor/SimulationForm'
 import { SocialSecurityForm } from './components/editor/SocialSecurityForm'
 import { YamlPreview } from './components/editor/YamlPreview'
 import { ResultsView } from './components/results/ResultsView'
-import type { ConfigListEntry, RawConfig, ResultsPayload, Schema } from './types'
+import {
+  downloadFile,
+  loadPlans,
+  loadSelected,
+  localSerialize,
+  newId,
+  parseUpload,
+  savePlans,
+  templateConfig,
+} from './storage'
+import type { Plan, RawConfig, ResultsPayload, Schema } from './types'
 
 export default function App() {
   const [schema, setSchema] = useState<Schema | null>(null)
-  const [configs, setConfigs] = useState<ConfigListEntry[]>([])
-  const [selected, setSelected] = useState<string | null>(null)
+  const [plans, setPlans] = useState<Plan[]>(() => loadPlans())
+  const [selected, setSelected] = useState<string | null>(() => loadSelected())
   const [draft, setDraft] = useState<RawConfig | null>(null)
+  // "dirty" now means edited since the last download — the plan itself is
+  // always persisted to localStorage, so nothing is lost by switching plans.
   const [dirty, setDirty] = useState(false)
   const [tab, setTab] = useState<'form' | 'yaml'>('form')
   const [validationError, setValidationError] = useState<string | null>(null)
@@ -26,18 +38,23 @@ export default function App() {
   const [running, setRunning] = useState(false)
   const [runSims, setRunSims] = useState<number | undefined>(undefined)
   const [runSeed, setRunSeed] = useState<number | undefined>(undefined)
-
-  const refreshList = useCallback(async () => {
-    setConfigs(await api.listConfigs())
-  }, [])
+  const fileInput = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    Promise.all([api.schema(), api.listConfigs()])
-      .then(([loadedSchema, list]) => {
-        setSchema(loadedSchema)
-        setConfigs(list)
-      })
+    api
+      .schema()
+      .then(setSchema)
       .catch((error) => setBanner({ kind: 'error', text: `could not reach server: ${error.message}` }))
+  }, [])
+
+  // Load the initially-selected plan's config into the editable draft once.
+  useEffect(() => {
+    const initial = plans.find((p) => p.id === selected) ?? plans[0]
+    if (initial) {
+      setSelected(initial.id)
+      setDraft(initial.config)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Debounced server-side validation of the draft.
@@ -54,41 +71,119 @@ export default function App() {
     return () => clearTimeout(validateTimer.current)
   }, [draft])
 
-  const confirmDiscard = () =>
-    !dirty || window.confirm('Discard unsaved changes to the current config?')
+  // Single writer for plan state: keep React state and localStorage in lockstep.
+  const persist = (nextPlans: Plan[], nextSelected: string | null) => {
+    setPlans(nextPlans)
+    setSelected(nextSelected)
+    savePlans(nextPlans, nextSelected)
+  }
 
-  const selectConfig = async (name: string) => {
-    if (name === selected || !confirmDiscard()) return
-    try {
-      const file = await api.getConfig(name)
-      setSelected(name)
-      setDraft(file.config)
-      setDirty(false)
-      setResults(null)
-      setBanner(null)
-      setValidationError(file.error)
-    } catch (error) {
-      setBanner({ kind: 'error', text: (error as Error).message })
-    }
+  const selectPlan = (id: string) => {
+    if (id === selected) return
+    const plan = plans.find((p) => p.id === id)
+    if (!plan) return
+    setSelected(id)
+    savePlans(plans, id)
+    setDraft(plan.config)
+    setDirty(false)
+    setResults(null)
+    setBanner(null)
   }
 
   const updateDraft = (next: RawConfig) => {
     setDraft(next)
     setDirty(true)
     setBanner(null)
+    if (selected) {
+      persist(
+        plans.map((p) => (p.id === selected ? { ...p, config: next } : p)),
+        selected,
+      )
+    }
   }
 
-  const save = async () => {
-    if (!selected || !draft) return
+  const addPlan = (name: string, config: RawConfig) => {
+    const plan: Plan = { id: newId(), name, config }
+    persist([...plans, plan], plan.id)
+    setDraft(config)
+    setDirty(true)
+    setResults(null)
+    setBanner(null)
+  }
+
+  const create = () => {
+    const name = window.prompt('Name for the new plan (e.g. my_plan):')
+    if (!name) return
+    addPlan(name.replace(/\.yaml$/, ''), templateConfig())
+  }
+
+  const duplicate = () => {
+    const current = plans.find((p) => p.id === selected)
+    if (!current) return
+    const name = window.prompt('Name for the copy:', `${current.name}_copy`)
+    if (!name) return
+    // Deep clone so edits to the copy don't touch the original.
+    addPlan(name.replace(/\.yaml$/, ''), structuredClone(current.config))
+  }
+
+  const rename = () => {
+    const current = plans.find((p) => p.id === selected)
+    if (!current) return
+    const name = window.prompt('New name for this plan:', current.name)
+    if (!name || name === current.name) return
+    persist(
+      plans.map((p) => (p.id === current.id ? { ...p, name: name.replace(/\.yaml$/, '') } : p)),
+      selected,
+    )
+  }
+
+  const remove = () => {
+    const current = plans.find((p) => p.id === selected)
+    if (!current) return
+    if (!window.confirm(`Remove "${current.name}" from this browser? Download it first to keep a copy.`))
+      return
+    const remaining = plans.filter((p) => p.id !== current.id)
+    const nextSelected = remaining[0]?.id ?? null
+    persist(remaining, nextSelected)
+    setDraft(remaining.find((p) => p.id === nextSelected)?.config ?? null)
+    setDirty(false)
+    setResults(null)
+    setBanner(null)
+  }
+
+  const upload = () => fileInput.current?.click()
+
+  const onFileChosen = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = '' // allow re-uploading the same filename later
+    if (!file) return
     try {
-      await api.saveConfig(selected, draft)
+      const config = await parseUpload(file)
+      const name = file.name.replace(/\.ya?ml$/i, '')
+      // Uploaded plans start "clean": they already exist on the user's disk.
+      const plan: Plan = { id: newId(), name, config }
+      persist([...plans, plan], plan.id)
+      setDraft(config)
       setDirty(false)
-      setBanner({ kind: 'ok', text: `saved ${selected}` })
-      refreshList()
+      setResults(null)
+      setBanner({ kind: 'ok', text: `loaded ${file.name}` })
     } catch (error) {
-      const message = error instanceof ApiError ? error.message : String(error)
-      setBanner({ kind: 'error', text: `not saved — ${message}` })
+      setBanner({ kind: 'error', text: `could not load file — ${(error as Error).message}` })
     }
+  }
+
+  const download = async () => {
+    const current = plans.find((p) => p.id === selected)
+    if (!current || !draft) return
+    let text: string
+    try {
+      text = await api.serialize(draft)
+    } catch {
+      text = localSerialize(draft) // offline fallback
+    }
+    downloadFile(`${current.name}.yaml`, text)
+    setDirty(false)
+    setBanner({ kind: 'ok', text: `downloaded ${current.name}.yaml` })
   }
 
   const run = async () => {
@@ -105,93 +200,43 @@ export default function App() {
     }
   }
 
-  const create = async () => {
-    const name = window.prompt('Name for the new config (e.g. my_plan):')
-    if (!name) return
-    const file = name.endsWith('.yaml') ? name : `${name}.yaml`
-    try {
-      await api.createConfig(file)
-      await refreshList()
-      await selectConfig(file)
-    } catch (error) {
-      setBanner({ kind: 'error', text: (error as Error).message })
-    }
-  }
-
-  const duplicate = async () => {
-    if (!selected) return
-    const suggestion = selected.replace(/\.yaml$/, '_copy')
-    const name = window.prompt('Name for the copy:', suggestion)
-    if (!name) return
-    const file = name.endsWith('.yaml') ? name : `${name}.yaml`
-    try {
-      await api.createConfig(file, selected)
-      await refreshList()
-      await selectConfig(file)
-    } catch (error) {
-      setBanner({ kind: 'error', text: (error as Error).message })
-    }
-  }
-
-  const rename = async () => {
-    if (!selected) return
-    if (!confirmDiscard()) return
-    const current = selected.replace(/\.yaml$/, '')
-    const name = window.prompt('New name for this config:', current)
-    if (!name || name === current) return
-    const file = name.endsWith('.yaml') ? name : `${name}.yaml`
-    try {
-      await api.renameConfig(selected, file)
-      setSelected(null)
-      setDirty(false)
-      await refreshList()
-      await selectConfig(file)
-    } catch (error) {
-      setBanner({ kind: 'error', text: (error as Error).message })
-    }
-  }
-
-  const remove = async () => {
-    if (!selected) return
-    if (!window.confirm(`Delete ${selected}? The file is removed from disk.`)) return
-    try {
-      await api.deleteConfig(selected)
-      setSelected(null)
-      setDraft(null)
-      setResults(null)
-      setDirty(false)
-      refreshList()
-    } catch (error) {
-      setBanner({ kind: 'error', text: (error as Error).message })
-    }
-  }
-
+  const currentName = plans.find((p) => p.id === selected)?.name ?? ''
   const accountNames = draft?.accounts.map((a) => a.name) ?? []
 
   return (
     <>
+      <input
+        ref={fileInput}
+        type="file"
+        accept=".yaml,.yml"
+        style={{ display: 'none' }}
+        onChange={onFileChosen}
+      />
       <ConfigList
-        configs={configs}
+        plans={plans}
         selected={selected}
-        onSelect={selectConfig}
+        onSelect={selectPlan}
         onCreate={create}
         onDuplicate={duplicate}
         onRename={rename}
         onDelete={remove}
+        onUpload={upload}
       />
       <main>
         {!draft || !schema ? (
           <div className="empty-state">
-            {schema ? 'Select a config on the left, or create a new one.' : 'Connecting to server…'}
+            {schema
+              ? 'Create a new plan, or upload a plan YAML file to get started.'
+              : 'Connecting to server…'}
           </div>
         ) : (
           <>
             <div className="topbar">
-              <h2>{selected?.replace(/\.yaml$/, '')}</h2>
-              {dirty && <span className="dirty">unsaved changes</span>}
+              <h2>{currentName}</h2>
+              {dirty && <span className="dirty">not downloaded</span>}
               <span className="spacer" />
-              <button className="primary" onClick={save} disabled={!dirty || validationError !== null}>
-                Save
+              <button className="primary" onClick={download} disabled={validationError !== null}>
+                Download
               </button>
             </div>
 
@@ -269,11 +314,6 @@ export default function App() {
               </button>
               <NumberField label="sims override" value={runSims} onChange={setRunSims} placeholder="config" min={1} />
               <NumberField label="seed override" value={runSeed} onChange={setRunSeed} placeholder="config" />
-              {dirty && (
-                <span className="dirty" style={{ paddingBottom: 8 }}>
-                  runs the edited (unsaved) config
-                </span>
-              )}
             </div>
 
             {results && <ResultsView results={results} />}
