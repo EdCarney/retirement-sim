@@ -45,19 +45,17 @@ export function ConfigList({
         </div>
       ))}
       {plans.length === 0 && <div className="config-item">no plans yet</div>}
+      {/* One wrapping container so the buttons reflow per viewport: two per
+          row on desktop (flex-basis 40%), a single row on phones. */}
       <div className="actions">
         <button onClick={onCreate}>new</button>
         <button onClick={onUpload}>upload</button>
-      </div>
-      <div className="actions">
         <button onClick={onDuplicate} disabled={!selected}>
           duplicate
         </button>
         <button onClick={onRename} disabled={!selected}>
           rename
         </button>
-      </div>
-      <div className="actions">
         <button onClick={onDelete} disabled={!selected}>
           delete
         </button>
